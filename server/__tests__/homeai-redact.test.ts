@@ -66,6 +66,15 @@ describe('redactor', () => {
     );
   });
 
+  it('does not confuse URL values with following JSON secrets', () => {
+    expect(redact('{"url":"http://host","password":"hunter2"}')).toBe(
+      `{"url":"http://host","password":"${MASK}"}`,
+    );
+    expect(redact('{"url":"https://sol:3001","apiKey":"abc12345"}')).toBe(
+      `{"url":"https://sol:3001","apiKey":"${MASK}"}`,
+    );
+  });
+
   it('leaves ordinary text alone', () => {
     const plain = 'Reading magic keywords doc · ssh sol nvidia-smi · Editing keyboard.ts';
     expect(redact(plain)).toBe(plain);

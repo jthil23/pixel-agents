@@ -40,7 +40,8 @@ export function createRedactor(env: NodeJS.ProcessEnv = process.env): (s: string
         offset: number,
       ) => {
         const schemeStart = s.lastIndexOf('://', offset);
-        if (schemeStart !== -1 && !/[\s/@]/.test(s.slice(schemeStart + 3, offset))) return match;
+        if (schemeStart !== -1 && /^[A-Za-z0-9_.-]*$/.test(s.slice(schemeStart + 3, offset)))
+          return match;
         const value = doubleValue ?? singleValue ?? unquotedValue;
         if (
           name.toLowerCase() === 'authorization' &&
