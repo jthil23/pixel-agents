@@ -4,6 +4,8 @@ import * as path from 'node:path';
 
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import { AgentStateStore } from '../src/agentStateStore.js';
+import { OfficeBridge } from '../src/homeai/officeBridge.js';
 import { ACTIVE_WINDOW_MS, folderOf, OmpSource } from '../src/homeai/ompSource.js';
 import type { MailroomKind, SessionEvent, SourceSink, TrackedAgent } from '../src/homeai/types.js';
 
@@ -27,14 +29,11 @@ const header = (id: string, cwd: string) =>
       timestamp: '2026-09-27T14:59:00Z',
     }),
   ].join('\n');
-const call = (id: string) =>
+const call = (id: string, name = 'read') =>
   JSON.stringify({
     type: 'message',
     timestamp: '2026-09-27T14:59:10Z',
-    message: {
-      role: 'assistant',
-      content: [{ type: 'toolCall', id, name: 'read', arguments: {} }],
-    },
+    message: { role: 'assistant', content: [{ type: 'toolCall', id, name, arguments: {} }] },
   });
 const setMtime = (file: string, ms: number) => fs.utimesSync(file, ms / 1000, ms / 1000);
 
@@ -224,5 +223,55 @@ describe('OmpSource', () => {
         { folderName: 'Child', lastActive: NOW - 5_000 },
       ]),
     );
+  });
+  it('replays only resumed-session work after clearing pre-exit tool state', () => {
+    const bridgeStore = new AgentStateStore();
+    const bridge = new OfficeBridge({ store: bridgeStore, redact: (text) => text, now: () => now });
+    fs.writeFileSync(sessionFile, `${header('s1', 'G:\\Home-AI')}\n${call('ask-1', 'ask')}\n`);
+    setMtime(sessionFile, NOW - 60_000);
+    src = new OmpSource({ root, roomActivityDays: 7, sink: bridge, now: () => now });
+    src.discover();
+    src.poll();
+    expect(bridge.snapshotMessages()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'agentToolStart', toolName: 'ask' }),
+      ]),
+    );
+
+    fs.appendFileSync(
+      sessionFile,
+      `${JSON.stringify({ type: 'custom', customType: 'session_exit', data: {}, timestamp: 'x' })}\n`,
+    );
+    setMtime(sessionFile, NOW - 30_000);
+    src.poll();
+    fs.appendFileSync(sessionFile, `${call('read-1')}\n`);
+    setMtime(sessionFile, NOW - 10_000);
+    src.discover();
+    src.poll();
+
+    const snapshot = bridge.snapshotMessages();
+    const toolStarts = snapshot.filter((message) => message.type === 'agentToolStart');
+    expect(toolStarts).toEqual([
+      expect.objectContaining({ type: 'agentToolStart', toolId: 'read-1', toolName: 'read' }),
+    ]);
+    expect(snapshot).toContainEqual(
+      expect.objectContaining({ type: 'agentStatus', status: 'active' }),
+    );
+  });
+
+  it('drops an exited session when only a title change follows the exit', () => {
+    src.discover();
+    src.poll();
+    fs.appendFileSync(
+      sessionFile,
+      `${JSON.stringify({ type: 'custom', customType: 'session_exit', data: {}, timestamp: 'x' })}\n`,
+    );
+    fs.appendFileSync(
+      sessionFile,
+      `${JSON.stringify({ type: 'title_change', title: 'After exit', timestamp: 'x' })}\n`,
+    );
+    setMtime(sessionFile, NOW - 10_000);
+    src.poll();
+    expect(sink.removed).toContain(sessionFile);
   });
 });

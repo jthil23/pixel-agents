@@ -126,21 +126,43 @@ export class OmpSource {
       let justRegistered = false;
       if (lines.length > 0 && t.registered) t.lastDataAt = now;
       if (lines.length > 0 || (!t.registered && t.pending.length > 0)) {
-        const events = [...t.pending, ...lines.flatMap((l) => t.parser.parseLine(l))];
+        let events = [...t.pending, ...lines.flatMap((line) => t.parser.parseLine(line))];
         t.pending = [];
-        const replay = !t.registered;
-        if (!t.registered && !this.register(t, events)) {
-          t.pending = events;
-        } else {
-          justRegistered = replay;
-          this.o.sink.applyEvents(t.key, events, replay);
-          const lastExit = events.findLastIndex((e) => e.kind === 'sessionExit');
-          if (
-            lastExit !== -1 &&
-            !events.slice(lastExit + 1).some((e) => e.kind !== 'sessionExit')
-          ) {
+        const lastExit = events.findLastIndex((event) => event.kind === 'sessionExit');
+        if (lastExit !== -1) {
+          const resumedEvents = events.slice(lastExit + 1);
+          const hasWorkAfterExit = resumedEvents.some(
+            (event) =>
+              event.kind === 'toolStart' ||
+              event.kind === 'toolEnd' ||
+              event.kind === 'turnEnd' ||
+              event.kind === 'usage',
+          );
+          if (!hasWorkAfterExit) {
             this.drop(t);
             continue;
+          }
+          const metadata = events.filter(
+            (event) => event.kind === 'header' || event.kind === 'title' || event.kind === 'init',
+          );
+          events = [...metadata, ...resumedEvents];
+          if (t.registered) {
+            this.o.sink.removeAgent(t.key);
+            t.registered = false;
+          }
+          if (!this.register(t, events)) {
+            t.pending = events;
+            continue;
+          }
+          justRegistered = true;
+          this.o.sink.applyEvents(t.key, events, true);
+        } else {
+          const replay = !t.registered;
+          if (!t.registered && !this.register(t, events)) {
+            t.pending = events;
+          } else {
+            justRegistered = replay;
+            this.o.sink.applyEvents(t.key, events, replay);
           }
         }
       }
@@ -195,19 +217,6 @@ export class OmpSource {
         registered: false,
         lastDataAt: mtime,
       });
-    }
-    if (depth >= MAX_DEPTH) return;
-    const childDir = file.slice(0, -'.jsonl'.length);
-    const now = this.o.now();
-    for (const child of dirents(childDir).filter((d) => d.isFile() && d.name.endsWith('.jsonl'))) {
-      const childFile = path.join(childDir, child.name);
-      if (now - mtimeMs(childFile) > ACTIVE_WINDOW_MS) continue;
-      this.track(
-        childFile,
-        child.name.startsWith('__advisor') ? 'advisor' : 'subagent',
-        file,
-        depth + 1,
-      );
     }
   }
 
