@@ -156,11 +156,12 @@ describe('OfficeBridge', () => {
       expect(effects().filter((e) => e.effect === 'confetti')).toHaveLength(1);
     });
 
-    it('allows a new user turn to celebrate independently', () => {
+    it('allows a later user message to celebrate yield again without duplicating the stop', () => {
       bridge.upsertAgent(scout);
-      bridge.applyEvents(scout.key, [...threeTools, ...yieldOk, stop], false);
-      bridge.applyEvents(scout.key, userMessage(false), false);
+      bridge.applyEvents(scout.key, [...threeTools, ...yieldOk], false);
+      bridge.applyEvents(scout.key, userMessage(true), false);
       bridge.applyEvents(scout.key, [...threeTools, ...successfulYields(1, 'next-')], false);
+      bridge.applyEvents(scout.key, [stop], false);
       expect(effects().filter((e) => e.effect === 'confetti')).toHaveLength(2);
     });
 

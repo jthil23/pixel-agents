@@ -438,8 +438,7 @@ export class OfficeBridge implements SourceSink {
           ev.toolName === 'yield' &&
           !ev.isError &&
           info.turnTools >= CONFETTI_MIN_TOOLS &&
-          !info.celebrated &&
-          !info.turnCelebrated
+          !info.celebrated
         ) {
           info.celebrated = true;
           info.turnCelebrated = true;
