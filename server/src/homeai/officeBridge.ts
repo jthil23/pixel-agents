@@ -46,6 +46,8 @@ interface Info {
   contextTokens: number;
   recent: ToolRecord[];
   active: Map<string, ToolRecord>;
+  turnOpen: boolean;
+  turnEnded: boolean;
   turnTools: number;
   errorTimes: number[];
   lastEventAt: number;
@@ -157,6 +159,8 @@ export class OfficeBridge implements SourceSink {
       contextTokens: 0,
       recent: [],
       active: new Map(),
+      turnOpen: false,
+      turnEnded: false,
       turnTools: 0,
       errorTimes: [],
       lastEventAt: this.deps.now(),
@@ -210,7 +214,13 @@ export class OfficeBridge implements SourceSink {
   tick(): void {
     const now = this.deps.now();
     for (const info of this.byId.values()) {
-      if (info.waiting && !info.dozing && now - info.lastEventAt >= DOZE_AFTER_MS) {
+      if (
+        info.turnEnded &&
+        !info.turnOpen &&
+        info.active.size === 0 &&
+        !info.dozing &&
+        now - info.lastEventAt >= DOZE_AFTER_MS
+      ) {
         info.dozing = true;
         this.effect({ effect: 'doze', agentId: info.id });
       }
@@ -276,14 +286,17 @@ export class OfficeBridge implements SourceSink {
     return out;
   }
 
+  private effectiveStatus(info: Info): { status: 'active' | 'waiting'; awaitingInput?: true } {
+    if ([...info.active.values()].some((tool) => tool.toolName === 'ask')) {
+      return { status: 'waiting', awaitingInput: true };
+    }
+    if (info.turnOpen || info.active.size > 0) return { status: 'active' };
+    return { status: 'waiting' };
+  }
+
   private sendState(info: Info, send: Send): void {
     const id = info.id;
-    const tools = [...info.active.values()];
-    if (tools.length === 0) send({ type: 'agentStatus', id, status: 'waiting' });
-    else if (tools.some((t) => t.toolName === 'ask'))
-      send({ type: 'agentStatus', id, status: 'waiting', awaitingInput: true });
-    else send({ type: 'agentStatus', id, status: 'active' });
-    for (const t of tools)
+    for (const t of info.active.values())
       send({
         type: 'agentToolStart',
         id,
@@ -291,6 +304,7 @@ export class OfficeBridge implements SourceSink {
         status: t.status,
         toolName: t.toolName,
       });
+    send({ type: 'agentStatus', id, ...this.effectiveStatus(info) });
     if (info.contextTokens > 0) {
       send({
         type: 'agentContextUsage',
@@ -314,6 +328,7 @@ export class OfficeBridge implements SourceSink {
     const state = store.get(id);
     const live = !replay;
     const eventTime = live ? this.deps.now() : Date.parse(ev.at) || this.deps.now();
+    if (ev.kind !== 'header' && ev.kind !== 'sessionExit') info.lastEventAt = eventTime;
     switch (ev.kind) {
       case 'header':
       case 'sessionExit':
@@ -329,6 +344,10 @@ export class OfficeBridge implements SourceSink {
         info.model = ev.model;
         info.costUsd += ev.costUsd;
         info.contextTokens = ev.contextTokens;
+        if (!info.turnEnded) {
+          info.turnOpen = true;
+          info.turnEnded = false;
+        }
         if (live && ev.contextTokens > 0) {
           store.broadcast({
             type: 'agentContextUsage',
@@ -352,7 +371,8 @@ export class OfficeBridge implements SourceSink {
         if (info.recent.length > RECENT_TOOLS) info.recent.shift();
         info.turnTools += 1;
         info.waiting = false;
-        info.lastEventAt = eventTime;
+        info.turnOpen = true;
+        info.turnEnded = false;
         state?.activeToolIds.add(ev.toolId);
         state?.activeToolStatuses.set(ev.toolId, status);
         state?.activeToolNames.set(ev.toolId, ev.toolName);
@@ -362,7 +382,6 @@ export class OfficeBridge implements SourceSink {
           info.dozing = false;
           this.effect({ effect: 'wake', agentId: id });
         }
-        store.broadcast({ type: 'agentStatus', id, status: 'active' });
         store.broadcast({
           type: 'agentToolStart',
           id,
@@ -370,8 +389,7 @@ export class OfficeBridge implements SourceSink {
           status,
           toolName: ev.toolName,
         });
-        if (ev.toolName === 'ask')
-          store.broadcast({ type: 'agentStatus', id, status: 'waiting', awaitingInput: true });
+        store.broadcast({ type: 'agentStatus', id, ...this.effectiveStatus(info) });
         if (ev.toolName === 'advise' && info.agent.role === 'advisor') {
           this.effect({
             effect: 'advice',
@@ -394,7 +412,7 @@ export class OfficeBridge implements SourceSink {
         state?.activeToolNames.delete(ev.toolId);
         if (!live) return;
         store.broadcast({ type: 'agentToolDone', id, toolId: ev.toolId });
-        if (ev.toolName === 'ask') store.broadcast({ type: 'agentStatus', id, status: 'active' });
+        store.broadcast({ type: 'agentStatus', id, ...this.effectiveStatus(info) });
         if (ev.isError) {
           const now = this.deps.now();
           info.errorTimes = info.errorTimes.filter((t) => now - t < ERROR_WINDOW_MS);
@@ -409,6 +427,8 @@ export class OfficeBridge implements SourceSink {
       case 'turnEnd': {
         const tools = info.turnTools;
         info.turnTools = 0;
+        info.turnOpen = false;
+        info.turnEnded = true;
         info.waiting = true;
         info.lastEventAt = eventTime;
         this.clearTools(info, state);

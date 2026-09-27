@@ -156,6 +156,83 @@ describe('OfficeBridge', () => {
     bridge.applyEvents(session.key, [start('b')], false);
     expect(effects().at(-1)).toEqual(expect.objectContaining({ effect: 'wake' }));
   });
+  it('keeps an open tool turn active without a turnEnd', () => {
+    bridge.upsertAgent(session);
+    const id = ids()[0];
+    bridge.applyEvents(session.key, [start('r'), end('r')], false);
+    expect(
+      bridge
+        .snapshotMessages()
+        .find((message) => message.type === 'agentStatus' && message.id === id),
+    ).toEqual({ type: 'agentStatus', id, status: 'active' });
+  });
+
+  it('snapshots unresolved asks after their tool start', () => {
+    bridge.upsertAgent(session);
+    const id = ids()[0];
+    bridge.applyEvents(session.key, [start('q', 'ask')], false);
+    const snapshot = bridge.snapshotMessages();
+    const toolIndex = snapshot.findIndex(
+      (message) => message.type === 'agentToolStart' && message.id === id,
+    );
+    const statusIndex = snapshot.findIndex(
+      (message) => message.type === 'agentStatus' && message.id === id,
+    );
+    expect(statusIndex).toBeGreaterThan(toolIndex);
+    expect(snapshot[statusIndex]).toEqual({
+      type: 'agentStatus',
+      id,
+      status: 'waiting',
+      awaitingInput: true,
+    });
+  });
+
+  it('keeps waiting for input while other tools run and after they finish', () => {
+    bridge.upsertAgent(session);
+    const id = ids()[0];
+    bridge.applyEvents(session.key, [start('q', 'ask'), start('r', 'read')], false);
+    expect(msgs.filter((message) => message.type === 'agentStatus').at(-1)).toEqual({
+      type: 'agentStatus',
+      id,
+      status: 'waiting',
+      awaitingInput: true,
+    });
+    bridge.applyEvents(session.key, [end('r')], false);
+    expect(msgs.filter((message) => message.type === 'agentStatus').at(-1)).toEqual({
+      type: 'agentStatus',
+      id,
+      status: 'waiting',
+      awaitingInput: true,
+    });
+    bridge.applyEvents(session.key, [end('q', false, 'ask')], false);
+    expect(msgs.filter((message) => message.type === 'agentStatus').at(-1)).toEqual({
+      type: 'agentStatus',
+      id,
+      status: 'active',
+    });
+  });
+
+  it('only dozes after turn completion and the most recent activity has been idle', () => {
+    bridge.upsertAgent(session);
+    now += DOZE_AFTER_MS + 1;
+    bridge.tick();
+    expect(effects().filter((message) => message.effect === 'doze')).toEqual([]);
+
+    now = Date.parse(T);
+    bridge.applyEvents(session.key, [stop], false);
+    now += 119_000;
+    bridge.applyEvents(
+      session.key,
+      [{ kind: 'usage', model: 'opus', costUsd: 0, totalTokens: 10, contextTokens: 10, at: T }],
+      false,
+    );
+    now = Date.parse(T) + 120_000;
+    bridge.tick();
+    expect(effects().filter((message) => message.effect === 'doze')).toEqual([]);
+    now = Date.parse(T) + 119_000 + DOZE_AFTER_MS + 1;
+    bridge.tick();
+    expect(effects().filter((message) => message.effect === 'doze')).toHaveLength(1);
+  });
 
   it('emits advice severity for advisor advise calls', () => {
     bridge.upsertAgent(session);
