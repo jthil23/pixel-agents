@@ -43,4 +43,18 @@ describe('RoomAssigner', () => {
     expect(sent).toHaveLength(2);
     expect(r.latest()).toEqual(sent);
   });
+  it('preserves unmanaged user labels and adds automatic project labels', () => {
+    let saved: Record<string, string[]> = {};
+    const r = new RoomAssigner({
+      load: () => ({ A: ['Break Room'], Mixed: ['Break Room', PROJECT_ROOMS[1]] }),
+      save: (m) => (saved = m),
+      broadcast: () => {},
+    });
+    r.update([{ folderName: 'A', lastActive: 5 }]);
+    expect(saved).toEqual({
+      A: ['Break Room', PROJECT_ROOMS[0]],
+      Mixed: ['Break Room'],
+      OpenClaw: [MAILROOM],
+    });
+  });
 });

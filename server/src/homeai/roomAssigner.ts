@@ -28,17 +28,25 @@ export class RoomAssigner {
   ) {}
 
   update(rooms: RoomActivity[]): void {
-    const sorted = [...rooms].sort((a, b) => b.lastActive - a.lastActive);
-    const mappings: Record<string, string[]> = {};
+    const userLabels: Record<string, string[]> = {};
     for (const [folder, labels] of Object.entries(this.o.load())) {
-      if (!labels.some((l) => MANAGED[l])) mappings[folder] = labels;
+      const remaining = labels.filter((label) => !MANAGED[label]);
+      if (remaining.length > 0) userLabels[folder] = [...new Set(remaining)];
     }
-    mappings.OpenClaw = [MAILROOM];
+    const mappings: Record<string, string[]> = {};
+    for (const [folder, labels] of Object.entries(userLabels)) mappings[folder] = labels;
+    mappings.OpenClaw = [...new Set([...(mappings.OpenClaw ?? []), MAILROOM])];
+    const assign = (folder: string, label: string) => {
+      mappings[folder] = [...new Set([...(mappings[folder] ?? []), label])];
+    };
+    const sorted = [...rooms].sort((a, b) => b.lastActive - a.lastActive);
     const projectRooms = sorted
       .slice(0, PROJECT_ROOMS.length)
       .map((r, i) => ({ label: PROJECT_ROOMS[i], projectName: r.folderName }));
-    for (const r of projectRooms) mappings[r.projectName] = [r.label];
-    for (const r of sorted.slice(PROJECT_ROOMS.length)) mappings[r.folderName] = [...PROJECT_ROOMS];
+    for (const r of projectRooms) assign(r.projectName, r.label);
+    for (const r of sorted.slice(PROJECT_ROOMS.length)) {
+      mappings[r.folderName] = [...new Set([...(mappings[r.folderName] ?? []), ...PROJECT_ROOMS])];
+    }
 
     const json = JSON.stringify([mappings, projectRooms]);
     if (json === this.lastJson) return;

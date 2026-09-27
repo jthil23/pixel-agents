@@ -87,4 +87,59 @@ describe('StatsAggregator', () => {
     });
     expect(agg.refresh(0.97).toolCalls).toBe(2);
   });
+  it('keeps nested subagent filenames instead of using transcript titles', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'homeai-subagent-'));
+    const sessionDir = path.join(home, 'omp', 'project', 'parent');
+    fs.mkdirSync(sessionDir, { recursive: true });
+    write(path.join(sessionDir, 'Scout.jsonl'), [
+      JSON.stringify({ type: 'title', title: 'Generated child title' }),
+      JSON.stringify({ type: 'session', id: 'child', cwd: 'G:\\Home-AI', timestamp: TODAY }),
+      msg(TODAY, {
+        role: 'assistant',
+        model: 'opus',
+        usage: { cost: { total: 1 } },
+        content: [{ type: 'toolCall', id: 'child-tool', name: 'read', arguments: {} }],
+      }),
+    ]);
+    const agg = new StatsAggregator({
+      ompRoot: path.join(home, 'omp'),
+      openclawRoot: path.join(home, 'oc'),
+      openclawAgents: [],
+      now: () => NOW,
+    });
+    expect(agg.refresh(null).busiestAgent).toBe('Scout');
+  });
+
+  it('replays a truncated transcript without double counting its contribution', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'homeai-truncated-'));
+    const ompDir = path.join(home, 'omp', 'project');
+    fs.mkdirSync(ompDir, { recursive: true });
+    const file = path.join(ompDir, 'session.jsonl');
+    const rows = [
+      JSON.stringify({
+        type: 'session',
+        id: 's',
+        cwd: 'G:\\Home-AI',
+        title: 'Busy',
+        timestamp: TODAY,
+      }),
+      msg(TODAY, {
+        role: 'assistant',
+        model: 'opus',
+        usage: { cost: { total: 1.5 } },
+        content: [{ type: 'toolCall', id: 'a', name: 'read', arguments: {} }],
+      }),
+      JSON.stringify({ type: 'padding' }),
+    ];
+    write(file, rows);
+    const agg = new StatsAggregator({
+      ompRoot: path.join(home, 'omp'),
+      openclawRoot: path.join(home, 'oc'),
+      openclawAgents: [],
+      now: () => NOW,
+    });
+    agg.refresh(null);
+    write(file, rows.slice(0, 2));
+    expect(agg.refresh(null)).toMatchObject({ toolCalls: 1, spendByModel: { opus: 1.5 } });
+  });
 });

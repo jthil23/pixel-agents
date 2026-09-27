@@ -34,6 +34,17 @@ interface FileState {
   trajectory: boolean;
   runKind: MailroomKind | undefined;
   name: string;
+  isRoot: boolean;
+  lastSize: number;
+  contribution: Contribution;
+}
+
+interface Contribution {
+  toolCalls: number;
+  spendByModel: Record<string, number>;
+  openclawTokens: number;
+  cronOk: number;
+  cronFailed: number;
 }
 
 const MAX_WALK_DEPTH = 6;
@@ -44,7 +55,6 @@ export class StatsAggregator {
   private spendByModel: Record<string, number> = {};
   private openclawTokens = 0;
   private toolCalls = 0;
-  private perFile = new Map<string, number>();
   private cronOk = 0;
   private cronFailed = 0;
 
@@ -64,11 +74,32 @@ export class StatsAggregator {
     const midnight = startOfLocalDay(now);
     this.discover(midnight);
     for (const [file, st] of this.files) {
+      let size: number;
+      try {
+        size = fs.statSync(file).size;
+      } catch {
+        this.files.delete(file);
+        continue;
+      }
+      if (size < st.lastSize) {
+        this.subtract(st.contribution);
+        st.tail = new JsonlTail(file);
+        st.parser = createSessionParser();
+        st.runKind = undefined;
+        st.contribution = {
+          toolCalls: 0,
+          spendByModel: {},
+          openclawTokens: 0,
+          cronOk: 0,
+          cronFailed: 0,
+        };
+      }
       const lines = st.tail.read();
       if (lines === null) {
         this.files.delete(file);
         continue;
       }
+      st.lastSize = size;
       for (const line of lines) {
         if (st.trajectory) this.countTrajectory(st, line, midnight);
         else this.countSession(file, st, line, midnight);
@@ -76,10 +107,10 @@ export class StatsAggregator {
     }
     let busiestAgent: string | null = null;
     let best = 0;
-    for (const [file, n] of this.perFile) {
-      if (n > best) {
-        best = n;
-        busiestAgent = this.files.get(file)?.name ?? path.basename(file, '.jsonl');
+    for (const st of this.files.values()) {
+      if (st.contribution.toolCalls > best) {
+        best = st.contribution.toolCalls;
+        busiestAgent = st.name;
       }
     }
     return {
@@ -100,9 +131,19 @@ export class StatsAggregator {
     this.spendByModel = {};
     this.openclawTokens = 0;
     this.toolCalls = 0;
-    this.perFile = new Map();
     this.cronOk = 0;
     this.cronFailed = 0;
+  }
+
+  private subtract(contribution: Contribution): void {
+    this.toolCalls -= contribution.toolCalls;
+    this.openclawTokens -= contribution.openclawTokens;
+    this.cronOk -= contribution.cronOk;
+    this.cronFailed -= contribution.cronFailed;
+    for (const [model, amount] of Object.entries(contribution.spendByModel)) {
+      this.spendByModel[model] = (this.spendByModel[model] ?? 0) - amount;
+      if (this.spendByModel[model] === 0) delete this.spendByModel[model];
+    }
   }
 
   private discover(midnight: number): void {
@@ -121,8 +162,10 @@ export class StatsAggregator {
           continue;
         }
         if (!it.isFile() || !it.name.endsWith('.jsonl') || this.files.has(full)) continue;
+        let stat: fs.Stats;
         try {
-          if (fs.statSync(full).mtimeMs < midnight) continue;
+          stat = fs.statSync(full);
+          if (stat.mtimeMs < midnight) continue;
         } catch {
           continue;
         }
@@ -133,6 +176,15 @@ export class StatsAggregator {
           trajectory: it.name.endsWith('.trajectory.jsonl'),
           runKind: undefined,
           name: path.basename(full, '.jsonl'),
+          isRoot: source === 'omp' && depth === 1,
+          lastSize: stat.size,
+          contribution: {
+            toolCalls: 0,
+            spendByModel: {},
+            openclawTokens: 0,
+            cronOk: 0,
+            cronFailed: 0,
+          },
         });
       }
     };
@@ -141,22 +193,28 @@ export class StatsAggregator {
       walk(path.join(this.o.openclawRoot, agent, 'sessions'), 0, 'openclaw');
   }
 
-  private countSession(file: string, st: FileState, line: string, midnight: number): void {
+  private countSession(_file: string, st: FileState, line: string, midnight: number): void {
     for (const ev of st.parser.parseLine(line)) {
       if (
         ev.kind === 'title' &&
         st.source === 'omp' &&
-        !path.basename(file).startsWith('__advisor')
+        st.isRoot &&
+        !st.name.startsWith('__advisor')
       )
         st.name = ev.title;
       if (ev.kind !== 'title' && (Date.parse(ev.at) || 0) < midnight) continue;
       if (ev.kind === 'toolStart') {
         this.toolCalls += 1;
-        this.perFile.set(file, (this.perFile.get(file) ?? 0) + 1);
+        st.contribution.toolCalls += 1;
       } else if (ev.kind === 'usage') {
-        if (st.source === 'omp')
+        if (st.source === 'omp') {
           this.spendByModel[ev.model] = (this.spendByModel[ev.model] ?? 0) + ev.costUsd;
-        else this.openclawTokens += ev.totalTokens;
+          st.contribution.spendByModel[ev.model] =
+            (st.contribution.spendByModel[ev.model] ?? 0) + ev.costUsd;
+        } else {
+          this.openclawTokens += ev.totalTokens;
+          st.contribution.openclawTokens += ev.totalTokens;
+        }
       }
     }
   }
@@ -175,7 +233,12 @@ export class StatsAggregator {
     if (rec.type !== 'session.ended') return;
     if ((typeof rec.ts === 'string' ? Date.parse(rec.ts) : 0) < midnight) return;
     if ((st.runKind ?? classifyRun(key, undefined)) !== 'clock') return;
-    if (data.status === 'success') this.cronOk += 1;
-    else this.cronFailed += 1;
+    if (data.status === 'success') {
+      this.cronOk += 1;
+      st.contribution.cronOk += 1;
+    } else {
+      this.cronFailed += 1;
+      st.contribution.cronFailed += 1;
+    }
   }
 }
