@@ -22,6 +22,7 @@ interface Tail {
   trajectory: boolean;
   tail: JsonlTail;
   parser: SessionParser;
+  kind: MailroomKind | undefined;
   historical: boolean;
   primed: boolean;
   lastDataAt: number;

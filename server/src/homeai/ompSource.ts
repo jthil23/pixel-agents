@@ -135,7 +135,13 @@ export class OmpSource {
           if (index === -1) t.metadata.push(event);
           else t.metadata[index] = event;
         }
-        const lastExit = events.findLastIndex((event) => event.kind === 'sessionExit');
+        let lastExit = -1;
+        for (let index = events.length - 1; index >= 0; index--) {
+          if (events[index].kind === 'sessionExit') {
+            lastExit = index;
+            break;
+          }
+        }
         if (lastExit !== -1) {
           const resumedEvents = events.slice(lastExit + 1);
           const hasWorkAfterExit = resumedEvents.some(
