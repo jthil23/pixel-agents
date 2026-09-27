@@ -54,6 +54,10 @@ const OVERLAY_PALETTE = {
   vignette: '255,23,68',
 };
 
+function effectIsLive(effect: HomeAiState['effects'][number], now: number): boolean {
+  return effect.startedAt + EFFECT_MS[effect.kind] > now;
+}
+
 export function renderHomeAiLayer(a: HomeAiRenderArgs): CabinetBox[] {
   const { ctx, state, layout, zoom, now } = a;
   if (!state.active) return [];
@@ -98,7 +102,9 @@ export function renderHomeAiLayer(a: HomeAiRenderArgs): CabinetBox[] {
   if (server) {
     boxes = cabinetBoxes(server, state.sol.groups);
     const alarmed = new Set(
-      state.effects.filter((e) => e.kind === 'alarm' && e.groupName).map((e) => e.groupName),
+      state.effects
+        .filter((e) => e.kind === 'alarm' && effectIsLive(e, now) && e.groupName)
+        .map((e) => e.groupName),
     );
     boxes.forEach((box, i) =>
       drawCabinet(
@@ -161,7 +167,7 @@ export function renderHomeAiLayer(a: HomeAiRenderArgs): CabinetBox[] {
       ctx.fillText('Z', px(hx + 9), py(hy - 6 - drift / 2));
     }
     for (const e of state.effects) {
-      if (e.agentId !== ch.id || e.startedAt + EFFECT_MS[e.kind] <= now) continue;
+      if (e.agentId !== ch.id || !effectIsLive(e, now)) continue;
       const t = now - e.startedAt;
       const p = Math.min(1, t / EFFECT_MS[e.kind]);
       switch (e.kind) {
@@ -202,7 +208,7 @@ export function renderHomeAiLayer(a: HomeAiRenderArgs): CabinetBox[] {
   }
 
   // Global alarm beacon + vignette
-  if (state.effects.some((e) => e.kind === 'alarm' && e.startedAt + EFFECT_MS.alarm > now)) {
+  if (state.effects.some((e) => e.kind === 'alarm' && effectIsLive(e, now))) {
     drawBitmap(ctx, blinkOn ? BEACON_ON : BEACON_OFF, a.width - 12 * zoom, 6 * zoom, zoom * 1.5);
     if (blinkOn) {
       ctx.strokeStyle = `rgba(${OVERLAY_PALETTE.vignette},0.55)`;

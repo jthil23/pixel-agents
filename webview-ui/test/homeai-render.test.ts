@@ -146,3 +146,62 @@ test('expired effects and cron-fire timestamps are not rendered before pruning',
   });
   assert.equal(fillRectCalls, 0);
 });
+
+test('a grouped alarm stops turning its cabinet red at exact expiry before pruning', () => {
+  const filled: string[] = [];
+  const ctx = {
+    font: '',
+    fillStyle: '',
+    strokeStyle: '',
+    lineWidth: 1,
+    imageSmoothingEnabled: true,
+    textAlign: 'start' as CanvasTextAlign,
+    save() {},
+    restore() {},
+    strokeRect() {},
+    fillText() {},
+    measureText(text: string) {
+      return { width: text.length } as TextMetrics;
+    },
+    fillRect(this: { fillStyle: string }) {
+      filled.push(this.fillStyle);
+    },
+  } as unknown as CanvasRenderingContext2D;
+  const state = createHomeAiState();
+  state.active = true;
+  state.sol = { reachable: true, groups: [{ name: 'Core', monitors: [] }] };
+  state.effects.push({
+    kind: 'alarm',
+    agentId: 0,
+    groupName: 'Core',
+    startedAt: 101,
+    until: 10_101,
+  });
+  const layout = {
+    cols: 8,
+    rows: 6,
+    areaTiles: Array(48).fill('Server Room'),
+    furniture: [],
+  } as unknown as OfficeLayout;
+  const args = {
+    ctx,
+    state,
+    layout,
+    characters: [],
+    offsetX: 0,
+    offsetY: 0,
+    zoom: 1,
+    width: 128,
+    height: 96,
+    now: 10_100,
+  };
+
+  renderHomeAiLayer(args);
+  assert.ok(filled.includes('#7f0000'));
+
+  filled.length = 0;
+  args.now = 10_101;
+  renderHomeAiLayer(args);
+  assert.equal(state.effects.length, 1);
+  assert.ok(!filled.includes('#7f0000'));
+});
