@@ -30,8 +30,35 @@ const STATS_MS = 60_000;
 const SUN_MS = 10 * 60_000;
 const MIN_PASSCODE_LENGTH = 8;
 
+function logJobError(label: string, error: unknown): void {
+  console.error(`[Pixel Office] ${label} failed:`, error);
+}
+
+async function runSafely(fn: () => void | Promise<void>, label: string): Promise<void> {
+  try {
+    await fn();
+  } catch (error) {
+    logJobError(label, error);
+  }
+}
+
+export function guardedInterval(
+  fn: () => void | Promise<void>,
+  ms: number,
+  label: string,
+): NodeJS.Timeout {
+  let inFlight = false;
+  return setInterval(() => {
+    if (inFlight) return;
+    inFlight = true;
+    void runSafely(fn, label).finally(() => {
+      inFlight = false;
+    });
+  }, ms);
+}
+
 /** Redirects console output to an append-only log file (used when run headless by Task Scheduler). */
-function logToFile(file: string): void {
+function logToFile(file: string): fs.WriteStream {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const stream = fs.createWriteStream(file, { flags: 'a' });
   for (const level of ['log', 'warn', 'error'] as const) {
@@ -39,14 +66,23 @@ function logToFile(file: string): void {
       stream.write(`${new Date().toISOString()} ${level.toUpperCase()} ${format(...args)}\n`);
     };
   }
+  return stream;
 }
 
 export async function runHomeAi(distRoot: string, argv: string[]): Promise<void> {
   const logIndex = argv.indexOf('--log');
-  if (logIndex >= 0 && argv[logIndex + 1]) logToFile(path.resolve(argv[logIndex + 1]));
+  const logFile =
+    logIndex >= 0 && argv[logIndex + 1] ? path.resolve(argv[logIndex + 1]) : undefined;
+  const logStream = logFile ? logToFile(logFile) : undefined;
   const cfg = loadHomeAiConfig();
   if (!cfg.passcodeHash) {
-    console.error('[Pixel Office] No passcode set. Run: node dist/cli.js set-passcode');
+    const message = '[Pixel Office] No passcode set. Run: node dist/cli.js set-passcode';
+    process.stderr.write(`${message}\n`);
+    logStream?.write(`${new Date().toISOString()} ERROR ${message}\n`);
+    if (logStream) {
+      logStream.end(() => process.exit(1));
+      return;
+    }
     process.exit(1);
   }
   console.log(
@@ -145,18 +181,18 @@ export async function runHomeAi(distRoot: string, argv: string[]): Promise<void>
   };
 
   openclaw.start();
-  discover();
-  pollFiles();
-  await Promise.all([pollSol(), pollSun()]);
-  pollStats();
+  await runSafely(discover, 'session discovery');
+  await runSafely(pollFiles, 'session file poll');
+  await Promise.all([runSafely(pollSol, 'SOL poll'), runSafely(pollSun, 'sun poll')]);
+  await runSafely(pollStats, 'office stats');
 
   const timers = [
-    setInterval(pollFiles, FILE_POLL_MS),
-    setInterval(discover, DISCOVER_MS),
-    setInterval(() => bridge.tick(), TICK_MS),
-    setInterval(pollStats, STATS_MS),
-    setInterval(() => void pollSol(), cfg.sol.pollSeconds * 1000),
-    setInterval(() => void pollSun(), SUN_MS),
+    guardedInterval(pollFiles, FILE_POLL_MS, 'session file poll'),
+    guardedInterval(discover, DISCOVER_MS, 'session discovery'),
+    guardedInterval(() => bridge.tick(), TICK_MS, 'office tick'),
+    guardedInterval(pollStats, STATS_MS, 'office stats'),
+    guardedInterval(pollSol, cfg.sol.pollSeconds * 1000, 'SOL poll'),
+    guardedInterval(pollSun, SUN_MS, 'sun poll'),
   ];
 
   console.log(
