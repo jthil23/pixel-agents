@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { AgentStateStore } from '../src/agentStateStore.js';
 import { ALARM_COOLDOWN_MS, DOZE_AFTER_MS, OfficeBridge } from '../src/homeai/officeBridge.js';
 import { createRedactor, MASK } from '../src/homeai/redact.js';
+import { createSessionParser } from '../src/homeai/sessionParser.js';
 import type { SessionEvent, TrackedAgent } from '../src/homeai/types.js';
 const T = '2026-09-27T14:00:00.000Z';
 const session: TrackedAgent = {
@@ -97,6 +98,48 @@ describe('OfficeBridge', () => {
   describe('subagent yield confetti', () => {
     const threeTools = [start('a'), end('a'), start('b'), end('b'), start('c'), end('c')];
     const yieldOk = [start('y', 'yield'), end('y', false, 'yield')];
+    const successfulYields = (count: number, prefix: string): SessionEvent[] =>
+      Array.from({ length: count }, (_, i) => [
+        start(`${prefix}${i}`, 'yield'),
+        end(`${prefix}${i}`, false, 'yield'),
+      ]).flat();
+
+    const userMessage = () =>
+      createSessionParser().parseLine(
+        JSON.stringify({
+          type: 'message',
+          timestamp: T,
+          message: { role: 'user', content: [{ type: 'text', text: 'next turn' }] },
+        }),
+      );
+
+    it('does not count tools from before the latest user message toward a yield', () => {
+      bridge.upsertAgent(scout);
+      bridge.applyEvents(scout.key, threeTools, false);
+      bridge.applyEvents(scout.key, userMessage(), false);
+      bridge.applyEvents(scout.key, yieldOk, false);
+      expect(effects().filter((e) => e.effect === 'confetti')).toEqual([]);
+    });
+
+    it('celebrates only once across four incremental yields and a following stop', () => {
+      bridge.upsertAgent(scout);
+      bridge.applyEvents(scout.key, [...threeTools, ...successfulYields(4, 'four-'), stop], false);
+      expect(effects().filter((e) => e.effect === 'confetti')).toHaveLength(1);
+    });
+
+    it('celebrates only once across five incremental yields', () => {
+      bridge.upsertAgent(scout);
+      bridge.applyEvents(scout.key, [...threeTools, ...successfulYields(5, 'five-')], false);
+      expect(effects().filter((e) => e.effect === 'confetti')).toHaveLength(1);
+    });
+
+    it('allows a new user turn to celebrate independently', () => {
+      bridge.upsertAgent(scout);
+      bridge.applyEvents(scout.key, [...threeTools, ...yieldOk], false);
+      bridge.applyEvents(scout.key, userMessage(), false);
+      bridge.applyEvents(scout.key, [...threeTools, ...successfulYields(1, 'next-')], false);
+      expect(effects().filter((e) => e.effect === 'confetti')).toHaveLength(2);
+    });
 
     it('fires exactly one confetti for a successful yield after >= 3 other tools', () => {
       bridge.upsertAgent(session);

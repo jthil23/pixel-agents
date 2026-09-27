@@ -13,6 +13,7 @@ export type SessionEvent =
       at: string;
     }
   | { kind: 'toolEnd'; toolId: string; toolName: string; isError: boolean; at: string }
+  | { kind: 'userMessage'; at: string }
   | { kind: 'turnEnd'; stopReason: StopReason; at: string }
   | {
       kind: 'usage';

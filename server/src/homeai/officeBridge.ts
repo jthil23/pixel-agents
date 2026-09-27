@@ -48,7 +48,9 @@ interface Info {
   active: Map<string, ToolRecord>;
   turnOpen: boolean;
   turnEnded: boolean;
-  turnTools: number;
+  turnTools: number; // non-yield tool starts since userMessage (yield threshold)
+  stopTools: number; // all tool starts since a stop/user boundary (stop threshold)
+  celebrated: boolean; // prevents duplicate confetti within one turn
   errorTimes: number[];
   lastEventAt: number;
   waiting: boolean;
@@ -162,6 +164,8 @@ export class OfficeBridge implements SourceSink {
       turnOpen: false,
       turnEnded: false,
       turnTools: 0,
+      stopTools: 0,
+      celebrated: false,
       errorTimes: [],
       lastEventAt: this.deps.now(),
       waiting: true,
@@ -333,6 +337,11 @@ export class OfficeBridge implements SourceSink {
       case 'header':
       case 'sessionExit':
         return;
+      case 'userMessage':
+        info.turnTools = 0;
+        info.stopTools = 0;
+        info.celebrated = false;
+        return;
       case 'title':
         info.title = this.deps.redact(ev.title);
         return;
@@ -371,7 +380,13 @@ export class OfficeBridge implements SourceSink {
         info.active.set(ev.toolId, rec);
         info.recent.push(rec);
         if (info.recent.length > RECENT_TOOLS) info.recent.shift();
-        info.turnTools += 1;
+        if (info.turnEnded) {
+          info.turnTools = 0;
+          info.stopTools = 0;
+          info.celebrated = false;
+        }
+        if (ev.toolName !== 'yield') info.turnTools += 1;
+        info.stopTools += 1;
         info.waiting = false;
         info.turnOpen = true;
         info.turnEnded = false;
@@ -417,13 +432,14 @@ export class OfficeBridge implements SourceSink {
         state?.activeToolIds.delete(ev.toolId);
         state?.activeToolStatuses.delete(ev.toolId);
         state?.activeToolNames.delete(ev.toolId);
-        if (ev.toolName === 'yield' && !ev.isError) {
-          const otherTools = info.turnTools - (rec?.toolName === 'yield' ? 1 : 0);
-          if (otherTools >= CONFETTI_MIN_TOOLS) {
-            // Advance replay state without letting a later stop animate this completed turn.
-            info.turnTools = 0;
-            if (live) this.effect({ effect: 'confetti', agentId: id });
-          }
+        if (
+          ev.toolName === 'yield' &&
+          !ev.isError &&
+          info.turnTools >= CONFETTI_MIN_TOOLS &&
+          !info.celebrated
+        ) {
+          info.celebrated = true;
+          if (live) this.effect({ effect: 'confetti', agentId: id });
         }
         if (!live) return;
         store.broadcast({ type: 'agentToolDone', id, toolId: ev.toolId });
@@ -440,19 +456,21 @@ export class OfficeBridge implements SourceSink {
         return;
       }
       case 'turnEnd': {
-        const tools = info.turnTools;
-        info.turnTools = 0;
+        const tools = info.stopTools;
+        info.stopTools = 0;
         info.turnOpen = false;
         info.turnEnded = true;
         info.waiting = true;
         info.lastEventAt = eventTime;
         this.clearTools(info, state);
+        const confetti =
+          ev.stopReason === 'stop' && tools >= CONFETTI_MIN_TOOLS && !info.celebrated;
+        if (confetti) info.celebrated = true;
         if (state) state.isWaiting = true;
         if (!live) return;
         store.broadcast({ type: 'agentToolsClear', id });
         store.broadcast({ type: 'agentStatus', id, status: 'waiting' });
-        if (ev.stopReason === 'stop' && tools >= CONFETTI_MIN_TOOLS)
-          this.effect({ effect: 'confetti', agentId: id });
+        if (confetti) this.effect({ effect: 'confetti', agentId: id });
         if (ev.stopReason === 'aborted' || ev.stopReason === 'error')
           this.alarm(info, `turn ${ev.stopReason}`);
         return;

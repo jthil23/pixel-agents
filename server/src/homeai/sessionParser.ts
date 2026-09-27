@@ -51,6 +51,7 @@ export function createSessionParser(): SessionParser {
       open.delete(toolId);
       return [{ kind: 'toolEnd', toolId, toolName, isError: msg.isError === true, at }];
     }
+    if (msg.role === 'user') return [{ kind: 'userMessage', at }];
     if (msg.role !== 'assistant') return [];
     const out: SessionEvent[] = [];
     if (msg.usage && typeof msg.usage === 'object') {

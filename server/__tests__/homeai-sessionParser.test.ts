@@ -130,4 +130,17 @@ describe('sessionParser', () => {
     ]);
     expect(p.parseLine('{not json')).toEqual([]);
   });
+
+  it('emits a user-message boundary event', () => {
+    const p = createSessionParser();
+    expect(
+      p.parseLine(
+        line({
+          type: 'message',
+          timestamp: T,
+          message: { role: 'user', content: [{ type: 'text', text: 'Next turn' }] },
+        }),
+      ),
+    ).toEqual([{ kind: 'userMessage', at: T }]);
+  });
 });
