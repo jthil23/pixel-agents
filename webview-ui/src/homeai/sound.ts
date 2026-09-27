@@ -4,18 +4,21 @@ const MUTE_KEY = 'pixelOffice.muted';
 const CLACK_MIN_GAP_MS = 120;
 let audio: AudioContext | null = null;
 let lastClack = 0;
-
-export function isMuted(): boolean {
-  try {
-    return localStorage.getItem(MUTE_KEY) === '1';
-  } catch {
-    return false;
-  }
+let muted = false;
+try {
+  muted = localStorage.getItem(MUTE_KEY) === '1';
+} catch {
+  // storage unavailable: use in-memory mute state
 }
 
-export function setMuted(muted: boolean): void {
+export function isMuted(): boolean {
+  return muted;
+}
+
+export function setMuted(value: boolean): void {
+  muted = value;
   try {
-    localStorage.setItem(MUTE_KEY, muted ? '1' : '0');
+    localStorage.setItem(MUTE_KEY, value ? '1' : '0');
   } catch {
     // storage unavailable: mute lasts for this page only
   }

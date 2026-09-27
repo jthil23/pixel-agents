@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 
-import { setSoundEnabled } from '../notificationSound.js';
+import { setSoundSuppressed } from '../notificationSound.js';
 import { transport } from '../transport/index.js';
 import {
   applyHomeAiMessage,
@@ -13,7 +13,7 @@ import { playSound } from './sound.js';
 const state = createHomeAiState();
 let version = 0;
 const listeners = new Set<() => void>();
-let pendingWindow: Window | null = null;
+const pendingWindows = new Map<number, Window>();
 
 function notify(): void {
   version++;
@@ -25,12 +25,15 @@ export const homeAiState = (): HomeAiState => state;
 /** Returns true when the message was a home-ai message (upstream handling can stop). */
 export function handleHomeAiMessage(msg: Record<string, unknown>): boolean {
   const res = applyHomeAiMessage(state, msg, Date.now());
-  if (res.firstActivation) setSoundEnabled(false);
+  if (res.firstActivation) setSoundSuppressed(true);
   if (res.sound && state.active) playSound(res.sound);
-  if (msg.type === 'transcriptLink' && pendingWindow) {
-    if (res.openUrl) pendingWindow.location.href = res.openUrl;
-    else pendingWindow.close();
-    pendingWindow = null;
+  if (msg.type === 'transcriptLink' && typeof msg.agentId === 'number') {
+    const pendingWindow = pendingWindows.get(msg.agentId);
+    if (pendingWindow) {
+      if (typeof msg.url === 'string') pendingWindow.location.href = msg.url;
+      else pendingWindow.close();
+      pendingWindows.delete(msg.agentId);
+    }
   }
   if (res.handled || msg.type === 'agentClosed') notify();
   return res.handled;
@@ -59,9 +62,12 @@ export function closePanel(): void {
 
 /** Opens a blank tab synchronously (user gesture) and navigates it when the link arrives. */
 export function requestTranscript(agentId: number): void {
-  pendingWindow = window.open('about:blank', '_blank');
-  if (pendingWindow) pendingWindow.opener = null;
-  transport.send({ type: 'requestTranscriptLink', agentId });
+  pendingWindows.get(agentId)?.close();
+  const pendingWindow = window.open('about:blank', '_blank');
+  if (pendingWindow) {
+    pendingWindow.opener = null;
+    pendingWindows.set(agentId, pendingWindow);
+  }
 }
 
 function subscribe(listener: () => void): () => void {

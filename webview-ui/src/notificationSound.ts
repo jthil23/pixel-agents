@@ -15,7 +15,12 @@ import {
 import { isE2E } from './runtime.js';
 
 let soundEnabled = true;
+let suppressed = false;
 let audioCtx: AudioContext | null = null;
+
+export function setSoundSuppressed(v: boolean): void {
+  suppressed = v;
+}
 
 /** E2E test hook: append every (attempted) sound invocation to a window-side log
  *  under window.__pixelAgentsTestHooks.playedSounds (namespace and type
@@ -65,7 +70,7 @@ function playNote(
 
 export async function playDoneSound(): Promise<void> {
   recordSoundForTests('done');
-  if (!soundEnabled) return;
+  if (suppressed || !soundEnabled) return;
   try {
     if (!audioCtx) {
       audioCtx = new AudioContext();
@@ -84,7 +89,7 @@ export async function playDoneSound(): Promise<void> {
 
 export async function playPermissionSound(): Promise<void> {
   recordSoundForTests('permission');
-  if (!soundEnabled) return;
+  if (suppressed || !soundEnabled) return;
   try {
     if (!audioCtx) {
       audioCtx = new AudioContext();
