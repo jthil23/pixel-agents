@@ -49,8 +49,9 @@ interface Info {
   turnOpen: boolean;
   turnEnded: boolean;
   turnTools: number; // non-yield tool starts since userMessage (yield threshold)
-  stopTools: number; // all tool starts since a stop/user boundary (stop threshold)
-  celebrated: boolean; // prevents duplicate confetti within one turn
+  stopTools: number; // all tool starts counted by the existing stop rule
+  celebrated: boolean; // yield duplicate guard since latest user message
+  turnCelebrated: boolean; // any confetti already emitted in the current turn
   errorTimes: number[];
   lastEventAt: number;
   waiting: boolean;
@@ -166,6 +167,7 @@ export class OfficeBridge implements SourceSink {
       turnTools: 0,
       stopTools: 0,
       celebrated: false,
+      turnCelebrated: false,
       errorTimes: [],
       lastEventAt: this.deps.now(),
       waiting: true,
@@ -339,7 +341,6 @@ export class OfficeBridge implements SourceSink {
         return;
       case 'userMessage':
         info.turnTools = 0;
-        info.stopTools = 0;
         info.celebrated = false;
         return;
       case 'title':
@@ -384,6 +385,7 @@ export class OfficeBridge implements SourceSink {
           info.turnTools = 0;
           info.stopTools = 0;
           info.celebrated = false;
+          info.turnCelebrated = false;
         }
         if (ev.toolName !== 'yield') info.turnTools += 1;
         info.stopTools += 1;
@@ -436,9 +438,11 @@ export class OfficeBridge implements SourceSink {
           ev.toolName === 'yield' &&
           !ev.isError &&
           info.turnTools >= CONFETTI_MIN_TOOLS &&
-          !info.celebrated
+          !info.celebrated &&
+          !info.turnCelebrated
         ) {
           info.celebrated = true;
+          info.turnCelebrated = true;
           if (live) this.effect({ effect: 'confetti', agentId: id });
         }
         if (!live) return;
@@ -464,8 +468,8 @@ export class OfficeBridge implements SourceSink {
         info.lastEventAt = eventTime;
         this.clearTools(info, state);
         const confetti =
-          ev.stopReason === 'stop' && tools >= CONFETTI_MIN_TOOLS && !info.celebrated;
-        if (confetti) info.celebrated = true;
+          ev.stopReason === 'stop' && tools >= CONFETTI_MIN_TOOLS && !info.turnCelebrated;
+        if (confetti) info.turnCelebrated = true;
         if (state) state.isWaiting = true;
         if (!live) return;
         store.broadcast({ type: 'agentToolsClear', id });

@@ -39,6 +39,19 @@ const end = (id: string, isError = false, name = 'read'): SessionEvent => ({
 });
 const stop: SessionEvent = { kind: 'turnEnd', stopReason: 'stop', at: T };
 
+const userMessage = (steering = false) =>
+  createSessionParser().parseLine(
+    JSON.stringify({
+      type: 'message',
+      timestamp: T,
+      message: {
+        role: 'user',
+        steering,
+        content: [{ type: 'text', text: 'continue' }],
+      },
+    }),
+  );
+
 describe('OfficeBridge', () => {
   let store: AgentStateStore;
   let now: number;
@@ -95,6 +108,25 @@ describe('OfficeBridge', () => {
     expect(effects()).toEqual([expect.objectContaining({ effect: 'confetti' })]);
   });
 
+  it('preserves root stop confetti across a steering message', () => {
+    bridge.upsertAgent(session);
+    bridge.applyEvents(
+      session.key,
+      [
+        start('root-a'),
+        end('root-a'),
+        start('root-b'),
+        end('root-b'),
+        start('root-c'),
+        end('root-c'),
+      ],
+      false,
+    );
+    bridge.applyEvents(session.key, userMessage(true), false);
+    bridge.applyEvents(session.key, [stop], false);
+    expect(effects().filter((e) => e.effect === 'confetti')).toHaveLength(1);
+  });
+
   describe('subagent yield confetti', () => {
     const threeTools = [start('a'), end('a'), start('b'), end('b'), start('c'), end('c')];
     const yieldOk = [start('y', 'yield'), end('y', false, 'yield')];
@@ -103,15 +135,6 @@ describe('OfficeBridge', () => {
         start(`${prefix}${i}`, 'yield'),
         end(`${prefix}${i}`, false, 'yield'),
       ]).flat();
-
-    const userMessage = () =>
-      createSessionParser().parseLine(
-        JSON.stringify({
-          type: 'message',
-          timestamp: T,
-          message: { role: 'user', content: [{ type: 'text', text: 'next turn' }] },
-        }),
-      );
 
     it('does not count tools from before the latest user message toward a yield', () => {
       bridge.upsertAgent(scout);
@@ -135,10 +158,18 @@ describe('OfficeBridge', () => {
 
     it('allows a new user turn to celebrate independently', () => {
       bridge.upsertAgent(scout);
-      bridge.applyEvents(scout.key, [...threeTools, ...yieldOk], false);
-      bridge.applyEvents(scout.key, userMessage(), false);
+      bridge.applyEvents(scout.key, [...threeTools, ...yieldOk, stop], false);
+      bridge.applyEvents(scout.key, userMessage(false), false);
       bridge.applyEvents(scout.key, [...threeTools, ...successfulYields(1, 'next-')], false);
       expect(effects().filter((e) => e.effect === 'confetti')).toHaveLength(2);
+    });
+
+    it('does not double celebrate after a steering message before same-turn stop', () => {
+      bridge.upsertAgent(scout);
+      bridge.applyEvents(scout.key, [...threeTools, ...yieldOk], false);
+      bridge.applyEvents(scout.key, userMessage(true), false);
+      bridge.applyEvents(scout.key, [stop], false);
+      expect(effects().filter((e) => e.effect === 'confetti')).toHaveLength(1);
     });
 
     it('fires exactly one confetti for a successful yield after >= 3 other tools', () => {

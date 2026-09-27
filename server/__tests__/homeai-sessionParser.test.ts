@@ -138,7 +138,11 @@ describe('sessionParser', () => {
         line({
           type: 'message',
           timestamp: T,
-          message: { role: 'user', content: [{ type: 'text', text: 'Next turn' }] },
+          message: {
+            role: 'user',
+            steering: true,
+            content: [{ type: 'text', text: 'Next turn' }],
+          },
         }),
       ),
     ).toEqual([{ kind: 'userMessage', at: T }]);
