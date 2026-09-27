@@ -19,6 +19,16 @@ import {
   WS_CLOSE_FORBIDDEN_ORIGIN,
   WS_CLOSE_UNAUTHORIZED,
 } from './constants.js';
+import {
+  COOKIE_NAME,
+  type HomeAiAuthOptions,
+  hostAllowed,
+  installHomeAiAuth,
+  originAllowed,
+  readCookie,
+  verifyCookie,
+} from './homeai/auth.js';
+import type { HomeAiClientHooks } from './homeai/clientHooks.js';
 import type { AgentState } from './types.js';
 
 /** Options for creating the HTTP + WebSocket server. */
@@ -45,6 +55,10 @@ export interface HttpServerOptions {
   onSetHooksEnabled?: SetHooksEnabledSideEffect;
   /** Invoked when an external asset directory is added/removed. Standalone reloads + re-broadcasts assets here. */
   onReloadAssets?: ReloadAssetsSideEffect;
+  /** Home-AI office hooks (per-client snapshot + detail/transcript requests). */
+  homeAi?: HomeAiClientHooks;
+  /** Home-AI LAN auth: Host/Origin allowlists + passcode cookie on every route except /login and /api/health. */
+  homeAiAuth?: HomeAiAuthOptions;
 }
 
 /** Result of createHttpServer(). */
@@ -67,7 +81,11 @@ export async function createHttpServer(options: HttpServerOptions): Promise<Http
     bodyLimit: MAX_HOOK_BODY_SIZE,
   });
 
-  await app.register(fastifyCors, { origin: true });
+  if (options.homeAiAuth) installHomeAiAuth(app, options.homeAiAuth);
+
+  if (!options.homeAiAuth) {
+    await app.register(fastifyCors, { origin: true });
+  }
   await app.register(fastifyWebsocket);
 
   // Static SPA serving (standalone mode only)
@@ -144,6 +162,19 @@ function registerHookRoute(app: FastifyInstance, options: HttpServerOptions): vo
 
 function registerWebSocketRoute(app: FastifyInstance, options: HttpServerOptions): void {
   app.get('/ws', { websocket: true }, (socket, request) => {
+    if (
+      options.homeAiAuth &&
+      (!hostAllowed(request.headers.host, options.homeAiAuth.allowed) ||
+        !originAllowed(request.headers.origin, options.homeAiAuth.allowed) ||
+        !verifyCookie(
+          readCookie(request.headers.cookie, COOKIE_NAME),
+          options.homeAiAuth.cookieSecret,
+          options.homeAiAuth.now(),
+        ))
+    ) {
+      socket.close(1008, 'unauthorized');
+      return;
+    }
     // CONNECTION gate. Embedded (VS Code) requires the Bearer token. Standalone
     // requires a same-origin handshake instead (isAllowedWebSocketOrigin), so a
     // non-browser local client with no Origin can still watch the office. What
@@ -211,6 +242,7 @@ function registerWebSocketRoute(app: FastifyInstance, options: HttpServerOptions
           onSetHooksEnabled: options.onSetHooksEnabled,
           onReloadAssets: options.onReloadAssets,
           privileged,
+          homeAi: options.homeAi,
         });
       } catch {
         // Malformed JSON, ignore
