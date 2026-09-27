@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { test } from 'vitest';
 
 import { createHomeAiState } from '../src/homeai/homeAiState.js';
+import { BEACON_OFF } from '../src/homeai/pixelArt.js';
 import { renderHomeAiLayer } from '../src/homeai/renderHomeAi.js';
 import type { Character, OfficeLayout } from '../src/office/types.js';
 interface DrawnText {
@@ -197,11 +198,11 @@ test('a grouped alarm stops turning its cabinet red at exact expiry before pruni
   };
 
   renderHomeAiLayer(args);
-  assert.ok(filled.includes('#7f0000'));
+  assert.ok(filled.includes(BEACON_OFF.palette.r));
 
   filled.length = 0;
   args.now = 10_101;
   renderHomeAiLayer(args);
   assert.equal(state.effects.length, 1);
-  assert.ok(!filled.includes('#7f0000'));
+  assert.ok(!filled.includes(BEACON_OFF.palette.r));
 });
