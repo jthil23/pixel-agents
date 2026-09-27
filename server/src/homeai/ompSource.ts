@@ -31,6 +31,7 @@ interface Tracked {
   tail: JsonlTail;
   parser: SessionParser;
   pending: SessionEvent[];
+  metadata: SessionEvent[];
   registered: boolean;
   lastDataAt: number;
 }
@@ -128,6 +129,12 @@ export class OmpSource {
       if (lines.length > 0 || (!t.registered && t.pending.length > 0)) {
         let events = [...t.pending, ...lines.flatMap((line) => t.parser.parseLine(line))];
         t.pending = [];
+        for (const event of events) {
+          if (event.kind !== 'header' && event.kind !== 'title' && event.kind !== 'init') continue;
+          const index = t.metadata.findIndex((saved) => saved.kind === event.kind);
+          if (index === -1) t.metadata.push(event);
+          else t.metadata[index] = event;
+        }
         const lastExit = events.findLastIndex((event) => event.kind === 'sessionExit');
         if (lastExit !== -1) {
           const resumedEvents = events.slice(lastExit + 1);
@@ -142,10 +149,7 @@ export class OmpSource {
             this.drop(t);
             continue;
           }
-          const metadata = events.filter(
-            (event) => event.kind === 'header' || event.kind === 'title' || event.kind === 'init',
-          );
-          events = [...metadata, ...resumedEvents];
+          events = [...t.metadata, ...resumedEvents];
           if (t.registered) {
             this.o.sink.removeAgent(t.key);
             t.registered = false;
@@ -214,6 +218,7 @@ export class OmpSource {
         tail: new JsonlTail(file),
         parser: createSessionParser(),
         pending: [],
+        metadata: [],
         registered: false,
         lastDataAt: mtime,
       });

@@ -258,6 +258,40 @@ describe('OmpSource', () => {
       expect.objectContaining({ type: 'agentStatus', status: 'active' }),
     );
   });
+  it('re-registers from saved metadata when exit and resumed work share a batch', () => {
+    const bridgeStore = new AgentStateStore();
+    const bridge = new OfficeBridge({ store: bridgeStore, redact: (text) => text, now: () => now });
+    fs.writeFileSync(sessionFile, `${header('s1', 'G:\\Home-AI')}\n${call('ask-1', 'ask')}\n`);
+    setMtime(sessionFile, NOW - 60_000);
+    src = new OmpSource({ root, roomActivityDays: 7, sink: bridge, now: () => now });
+    src.discover();
+    src.poll();
+
+    fs.appendFileSync(
+      sessionFile,
+      `${JSON.stringify({ type: 'custom', customType: 'session_exit', data: {}, timestamp: 'x' })}\n${call('read-1')}\n`,
+    );
+    setMtime(sessionFile, NOW - 30_000);
+    src.poll();
+    let snapshot = bridge.snapshotMessages();
+    expect(snapshot.filter((message) => message.type === 'agentToolStart')).toEqual([
+      expect.objectContaining({ type: 'agentToolStart', toolId: 'read-1', toolName: 'read' }),
+    ]);
+    expect(snapshot).toContainEqual(
+      expect.objectContaining({ type: 'agentStatus', status: 'active' }),
+    );
+
+    fs.appendFileSync(sessionFile, `${call('read-2')}\n`);
+    setMtime(sessionFile, NOW - 10_000);
+    src.poll();
+    snapshot = bridge.snapshotMessages();
+    expect(snapshot.filter((message) => message.type === 'agentToolStart')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'agentToolStart', toolId: 'read-1', toolName: 'read' }),
+        expect.objectContaining({ type: 'agentToolStart', toolId: 'read-2', toolName: 'read' }),
+      ]),
+    );
+  });
 
   it('drops an exited session when only a title change follows the exit', () => {
     src.discover();
