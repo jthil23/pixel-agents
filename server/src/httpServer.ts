@@ -19,15 +19,7 @@ import {
   WS_CLOSE_FORBIDDEN_ORIGIN,
   WS_CLOSE_UNAUTHORIZED,
 } from './constants.js';
-import {
-  COOKIE_NAME,
-  type HomeAiAuthOptions,
-  hostAllowed,
-  installHomeAiAuth,
-  originAllowed,
-  readCookie,
-  verifyCookie,
-} from './homeai/auth.js';
+import { type HomeAiAuthOptions, installHomeAiAuth } from './homeai/auth.js';
 import type { HomeAiClientHooks } from './homeai/clientHooks.js';
 import type { AgentState } from './types.js';
 
@@ -81,12 +73,12 @@ export async function createHttpServer(options: HttpServerOptions): Promise<Http
     bodyLimit: MAX_HOOK_BODY_SIZE,
   });
 
-  if (options.homeAiAuth) installHomeAiAuth(app, options.homeAiAuth);
-
   if (!options.homeAiAuth) {
     await app.register(fastifyCors, { origin: true });
   }
   await app.register(fastifyWebsocket);
+
+  if (options.homeAiAuth) installHomeAiAuth(app, options.homeAiAuth);
 
   // Static SPA serving (standalone mode only)
   if (!options.embedded && options.staticDir) {
@@ -162,19 +154,6 @@ function registerHookRoute(app: FastifyInstance, options: HttpServerOptions): vo
 
 function registerWebSocketRoute(app: FastifyInstance, options: HttpServerOptions): void {
   app.get('/ws', { websocket: true }, (socket, request) => {
-    if (
-      options.homeAiAuth &&
-      (!hostAllowed(request.headers.host, options.homeAiAuth.allowed) ||
-        !originAllowed(request.headers.origin, options.homeAiAuth.allowed) ||
-        !verifyCookie(
-          readCookie(request.headers.cookie, COOKIE_NAME),
-          options.homeAiAuth.cookieSecret,
-          options.homeAiAuth.now(),
-        ))
-    ) {
-      socket.close(1008, 'unauthorized');
-      return;
-    }
     // CONNECTION gate. Embedded (VS Code) requires the Bearer token. Standalone
     // requires a same-origin handshake instead (isAllowedWebSocketOrigin), so a
     // non-browser local client with no Origin can still watch the office. What
