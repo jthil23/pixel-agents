@@ -39,13 +39,13 @@ export function createRedactor(env: NodeJS.ProcessEnv = process.env): (s: string
     const placeholderPrefix = `\u0000PO${nonce}:`;
     const spans: string[] = [];
     s = s.replace(
+      URL_USERINFO,
+      (userinfo) => `${placeholderPrefix}${spans.push(userinfo) - 1}\u0000`,
+    );
+    s = s.replace(
       URL_QUERY_SECRET,
       (_match, separator: string, name: string) =>
         `${placeholderPrefix}${spans.push(`${separator}${name}=${MASK}`) - 1}\u0000`,
-    );
-    s = s.replace(
-      URL_USERINFO,
-      (userinfo) => `${placeholderPrefix}${spans.push(userinfo) - 1}\u0000`,
     );
     s = s.replace(
       NAME_VALUE,

@@ -82,6 +82,12 @@ describe('redactor', () => {
     expect(redact('https://h/cb?token="abc123"&x=1')).toBe(`https://h/cb?token="${MASK}"&x=1`);
     expect(redact('url=http://host password=x')).toBe('url=http://host password=' + MASK);
   });
+  it('protects URL userinfo before scanning query-like usernames', () => {
+    expect(redact('mysql://foo&token=abc:hunter22@host/db')).toBe(
+      `mysql://foo&token=abc:${MASK}@host/db`,
+    );
+  });
+
   it('keeps generated userinfo placeholders collision-safe', () => {
     expect(redact('note=\u00000\u0000 mysql://root:hunter22@host/db')).toBe(
       `note=\u00000\u0000 mysql://root:${MASK}@host/db`,
