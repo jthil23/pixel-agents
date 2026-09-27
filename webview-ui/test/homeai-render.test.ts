@@ -25,11 +25,11 @@ test('overlay text scales with zoom and clips to nameplate, board, and cabinet w
     restore() {},
     fillRect() {},
     strokeRect() {},
-    measureText(text: string) {
+    measureText(this: { font: string }, text: string) {
       const fontPx = Number.parseFloat(this.font);
       return { width: text.length * fontPx } as TextMetrics;
     },
-    fillText(text: string) {
+    fillText(this: { font: string }, text: string) {
       const fontPx = Number.parseFloat(this.font);
       drawn.push({ text, width: text.length * fontPx, fontPx });
     },

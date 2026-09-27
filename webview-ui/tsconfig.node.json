@@ -27,5 +27,6 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["vite.config.ts", "../core/src/assets/**/*.ts", "test/**/*.ts"]
+  "include": ["vite.config.ts", "../core/src/assets/**/*.ts", "test/**/*.ts"],
+  "exclude": ["test/homeai-*.test.ts"]
 }

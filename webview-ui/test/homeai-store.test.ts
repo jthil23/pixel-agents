@@ -1,15 +1,16 @@
 import assert from 'node:assert/strict';
+
 import { afterEach, test, vi } from 'vitest';
 
 vi.mock('../src/transport/index.js', () => ({ transport: { send: vi.fn() } }));
 
-import { playDoneSound, setSoundEnabled } from '../src/notificationSound.js';
 import {
   handleHomeAiMessage,
   openAgentPanel,
   requestTranscript,
 } from '../src/homeai/homeAiStore.js';
 import { isMuted, playSound, setMuted } from '../src/homeai/sound.js';
+import { playDoneSound, setSoundEnabled } from '../src/notificationSound.js';
 import { transport } from '../src/transport/index.js';
 
 const opened: { location: { href: string }; closed: boolean; opener: Window | null }[] = [];
@@ -78,7 +79,7 @@ test('home-ai activation keeps upstream done sounds suppressed after sound setti
       return audio;
     }
   } as unknown as typeof AudioContext;
-  globalThis.window = windowStub as unknown as Window;
+  globalThis.window = windowStub as unknown as typeof globalThis.window;
 
   handleHomeAiMessage({ type: 'ambientSun', phase: 'day', elevation: 10 });
   setSoundEnabled(true);
@@ -88,7 +89,7 @@ test('home-ai activation keeps upstream done sounds suppressed after sound setti
 });
 
 test('transcript responses only navigate or close the matching agent tab', () => {
-  globalThis.window = windowStub as unknown as Window;
+  globalThis.window = windowStub as unknown as typeof globalThis.window;
   requestTranscript(7);
   requestTranscript(8);
 
@@ -103,7 +104,7 @@ test('transcript responses only navigate or close the matching agent tab', () =>
 });
 
 test('transcript and agent detail requests reach the transport', () => {
-  globalThis.window = windowStub as unknown as Window;
+  globalThis.window = windowStub as unknown as typeof globalThis.window;
   const send = vi.mocked(transport.send);
   send.mockClear();
   handleHomeAiMessage({ type: 'ambientSun', phase: 'day', elevation: 10 });
