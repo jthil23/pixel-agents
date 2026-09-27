@@ -45,6 +45,7 @@ export function tickHomeAi(now: number = Date.now()): void {
 
 export function openAgentPanel(agentId: number): void {
   if (!state.active) return;
+  state.links.delete(agentId);
   state.panel = { kind: 'agent', agentId };
   transport.send({ type: 'requestAgentDetail', agentId });
   notify();

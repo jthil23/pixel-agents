@@ -161,7 +161,7 @@ export function renderHomeAiLayer(a: HomeAiRenderArgs): CabinetBox[] {
       ctx.fillText('Z', px(hx + 9), py(hy - 6 - drift / 2));
     }
     for (const e of state.effects) {
-      if (e.agentId !== ch.id) continue;
+      if (e.agentId !== ch.id || e.startedAt + EFFECT_MS[e.kind] <= now) continue;
       const t = now - e.startedAt;
       const p = Math.min(1, t / EFFECT_MS[e.kind]);
       switch (e.kind) {
@@ -202,7 +202,7 @@ export function renderHomeAiLayer(a: HomeAiRenderArgs): CabinetBox[] {
   }
 
   // Global alarm beacon + vignette
-  if (state.effects.some((e) => e.kind === 'alarm')) {
+  if (state.effects.some((e) => e.kind === 'alarm' && e.startedAt + EFFECT_MS.alarm > now)) {
     drawBitmap(ctx, blinkOn ? BEACON_ON : BEACON_OFF, a.width - 12 * zoom, 6 * zoom, zoom * 1.5);
     if (blinkOn) {
       ctx.strokeStyle = `rgba(${OVERLAY_PALETTE.vignette},0.55)`;

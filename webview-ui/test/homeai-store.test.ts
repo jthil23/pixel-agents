@@ -4,8 +4,10 @@ import { afterEach, test, vi } from 'vitest';
 
 vi.mock('../src/transport/index.js', () => ({ transport: { send: vi.fn() } }));
 
+import { transcriptButtonEnabled } from '../src/homeai/homeAiSelectors.js';
 import {
   handleHomeAiMessage,
+  homeAiState,
   openAgentPanel,
   requestTranscript,
 } from '../src/homeai/homeAiStore.js';
@@ -86,6 +88,40 @@ test('home-ai activation keeps upstream done sounds suppressed after sound setti
   await playDoneSound();
 
   assert.equal(audio.oscillators, 0);
+});
+
+test('a not-hosted transcript reply disables the action until the agent panel is reopened', () => {
+  const agentId = 12;
+  handleHomeAiMessage({ type: 'ambientSun', phase: 'day', elevation: 1 });
+  handleHomeAiMessage({
+    type: 'agentDetail',
+    agentId,
+    canOpenTranscript: true,
+  });
+  handleHomeAiMessage({
+    type: 'transcriptLink',
+    agentId,
+    reason: 'not hosted: enable collab.autoStart',
+  });
+
+  const state = homeAiState();
+  assert.equal(
+    transcriptButtonEnabled(
+      state.details.get(agentId)?.canOpenTranscript ?? false,
+      state.links.get(agentId)?.reason,
+    ),
+    false,
+  );
+
+  openAgentPanel(agentId);
+  assert.equal(state.links.has(agentId), false);
+  assert.equal(
+    transcriptButtonEnabled(
+      state.details.get(agentId)?.canOpenTranscript ?? false,
+      state.links.get(agentId)?.reason,
+    ),
+    true,
+  );
 });
 
 test('transcript responses only navigate or close the matching agent tab', () => {

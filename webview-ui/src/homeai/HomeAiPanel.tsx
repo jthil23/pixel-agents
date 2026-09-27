@@ -2,6 +2,7 @@
 import { useState } from 'react';
 
 import { Button } from '../components/ui/Button.js';
+import { transcriptButtonEnabled } from './homeAiSelectors.js';
 import type { MonitorState } from './homeAiState.js';
 import { closePanel, requestTranscript, useHomeAi } from './homeAiStore.js';
 import { isMuted, setMuted } from './sound.js';
@@ -47,6 +48,9 @@ export function HomeAiPanel() {
     const id = s.panel.agentId;
     const d = s.details.get(id);
     const link = s.links.get(id);
+    const transcriptEnabled = d
+      ? transcriptButtonEnabled(d.canOpenTranscript, link?.reason)
+      : false;
     body = d ? (
       <>
         <h3 style={{ margin: '0 0 4px' }}>{d.title}</h3>
@@ -62,8 +66,8 @@ export function HomeAiPanel() {
         </ul>
         <Button
           size="sm"
-          variant={d.canOpenTranscript ? 'accent' : 'disabled'}
-          disabled={!d.canOpenTranscript}
+          variant={transcriptEnabled ? 'accent' : 'disabled'}
+          disabled={!transcriptEnabled}
           onClick={() => requestTranscript(id)}
         >
           Open live transcript

@@ -4,7 +4,7 @@ import { test } from 'vitest';
 
 import { createHomeAiState } from '../src/homeai/homeAiState.js';
 import { renderHomeAiLayer } from '../src/homeai/renderHomeAi.js';
-import type { OfficeLayout } from '../src/office/types.js';
+import type { Character, OfficeLayout } from '../src/office/types.js';
 interface DrawnText {
   text: string;
   width: number;
@@ -91,4 +91,58 @@ test('overlay text scales with zoom and clips to nameplate, board, and cabinet w
   assert.ok(drawn.some((entry) => entry.fontPx === 2));
   assert.ok(roomNameplate);
   assert.ok(drawn.some((entry) => entry.fontPx <= 3));
+});
+
+test('expired effects and cron-fire timestamps are not rendered before pruning', () => {
+  let fillRectCalls = 0;
+  const ctx = {
+    imageSmoothingEnabled: true,
+    save() {},
+    restore() {},
+    fillRect() {
+      fillRectCalls++;
+    },
+  } as unknown as CanvasRenderingContext2D;
+  const state = createHomeAiState();
+  state.active = true;
+  state.effects.push({ kind: 'confetti', agentId: 1, startedAt: 1, until: 2501 });
+  const characters = [{ id: 1, x: 12, y: 12 }] as unknown as Character[];
+  const layout = {
+    cols: 4,
+    rows: 4,
+    areaTiles: Array(16).fill(''),
+    furniture: [],
+  } as unknown as OfficeLayout;
+
+  renderHomeAiLayer({
+    ctx,
+    state,
+    layout,
+    characters,
+    offsetX: 0,
+    offsetY: 0,
+    zoom: 1,
+    width: 64,
+    height: 64,
+    now: 2502,
+  });
+  assert.equal(fillRectCalls, 0);
+  assert.equal(state.effects.length, 1);
+
+  state.effects = [];
+  state.cronFireUntil.set(1, 86_400_000);
+  layout.furniture = [{ uid: 'clock', type: 'CLOCK', col: 0, row: 0 }];
+  renderHomeAiLayer({
+    ctx,
+    state,
+    layout,
+    characters: [],
+    offsetX: 0,
+    offsetY: 0,
+    zoom: 1,
+    width: 64,
+    height: 64,
+    now: 86_400_000,
+  });
+  assert.equal(fillRectCalls, 0);
 });
