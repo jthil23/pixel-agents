@@ -12,6 +12,7 @@ import {
   writeConfig,
 } from './configPersistence.js';
 import { HUE_SHIFT_MAX_DEG, PALETTE_COUNT } from './constants.js';
+import type { HomeAiClientHooks } from './homeai/clientHooks.js';
 import { readLayoutFromFile, writeLayoutToFile } from './layoutPersistence.js';
 import type { ConsentEffects } from './providers/hook/consentExecutor.js';
 import { applyConsentChoice } from './providers/hook/consentExecutor.js';
@@ -60,6 +61,8 @@ export interface ClientMessageContext {
    * to false so a caller that forgets to pass it gets the safe answer.
    */
   privileged?: boolean;
+  /** Home-AI office extras (standalone `--home-ai` only). */
+  homeAi?: HomeAiClientHooks;
 }
 
 // ── Setting key constants (mirror adapters/vscode/constants.ts) ──
@@ -83,6 +86,7 @@ export function handleClientMessage(
   send: WsSend,
   ctx: ClientMessageContext,
 ): void {
+  if (ctx.homeAi?.handle(msg, send)) return;
   const { store, runtime, cache } = ctx;
   const adapter = store.getAdapter();
 
@@ -362,8 +366,9 @@ function handleWebviewReady(send: WsSend, ctx: ClientMessageContext): void {
   // 1. Provider capabilities (must arrive before any agent messages)
   send({
     type: 'providerCapabilities',
-    readingTools: [...claudeProvider.readingTools],
-    subagentToolNames: [...claudeProvider.subagentToolNames],
+    readingTools: ctx.homeAi ? [...ctx.homeAi.readingTools] : [...claudeProvider.readingTools],
+    // Home-AI subagents are full teammate characters, never client-side Subtask sprites.
+    subagentToolNames: ctx.homeAi ? [] : [...claudeProvider.subagentToolNames],
   });
 
   // 2. Assets (from server cache, loaded at startup via pngjs)
@@ -515,4 +520,5 @@ function handleWebviewReady(send: WsSend, ctx: ClientMessageContext): void {
   // exist once the layout flush creates them. Without this a reconnecting
   // client shows bare characters until each agent takes another turn.
   resendAgentActivity(send, store);
+  ctx.homeAi?.onClientReady(send);
 }
