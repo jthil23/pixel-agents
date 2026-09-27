@@ -41,6 +41,20 @@ describe('monitorState', () => {
       ),
     ).toBe('up');
   });
+  it('counts only status-1 to status-0 transitions as flapping', () => {
+    expect(
+      monitorState(
+        [beat(2, 7), beat(0, 6), beat(2, 5), beat(0, 4), beat(2, 3), beat(0, 2), beat(1, 1)],
+        NOW,
+      ),
+    ).toBe('up');
+    expect(
+      monitorState(
+        [beat(3, 7), beat(0, 6), beat(3, 5), beat(0, 4), beat(3, 3), beat(0, 2), beat(1, 1)],
+        NOW,
+      ),
+    ).toBe('up');
+  });
 });
 
 const kumaFetch = (statusFor5: number) => async (url: string) => ({
@@ -95,6 +109,28 @@ describe('SolSource', () => {
     expect(r.snapshot.reachable).toBe(false);
     expect(r.snapshot.groups[0].monitors[0].state).toBe('unknown');
     expect(r.newlyDown).toEqual([]);
+  });
+  it('does not re-alarm a monitor that stayed down across a Kuma outage', async () => {
+    let status = 1;
+    let fail = false;
+    const src = new SolSource({
+      baseUrl: 'http://k',
+      slug: 'sol',
+      fetch: async (u) => {
+        if (fail) throw new Error('down');
+        return kumaFetch(status)(u);
+      },
+      now: () => NOW,
+    });
+    expect((await src.poll()).newlyDown).toEqual([]);
+    status = 0;
+    expect((await src.poll()).newlyDown).toEqual([
+      { groupName: 'Core Infrastructure', monitorName: 'Home Assistant' },
+    ]);
+    fail = true;
+    expect((await src.poll()).newlyDown).toEqual([]);
+    fail = false;
+    expect((await src.poll()).newlyDown).toEqual([]);
   });
 });
 

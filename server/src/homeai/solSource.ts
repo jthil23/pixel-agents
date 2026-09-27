@@ -46,10 +46,11 @@ export function monitorState(beats: SolBeat[], now: number): MonitorState {
   for (let i = 1; i < beats.length; i++) {
     if (
       beats[i].status === 0 &&
-      beats[i - 1].status !== 0 &&
+      beats[i - 1].status === 1 &&
       now - kumaTime(beats[i].time) <= HOUR_MS
-    )
+    ) {
       downs++;
+    }
   }
   return downs >= FLAP_TRANSITIONS ? 'flapping' : 'up';
 }
@@ -69,6 +70,7 @@ export async function getJson(
 
 export class SolSource {
   private last: SolSnapshot = { reachable: false, groups: [] };
+  private lastSuccessful: SolSnapshot = { reachable: false, groups: [] };
   private polled = false;
 
   constructor(
@@ -99,13 +101,11 @@ export class SolSource {
               name: String(m.name ?? id),
               state: monitorState(beats, now),
               uptime24h: typeof uptime === 'number' ? uptime : null,
-              beats: beats
-                .slice(-KEEP_BEATS)
-                .map((b) => ({
-                  status: b.status,
-                  ping: typeof b.ping === 'number' ? b.ping : null,
-                  time: b.time,
-                })),
+              beats: beats.slice(-KEEP_BEATS).map((b) => ({
+                status: b.status,
+                ping: typeof b.ping === 'number' ? b.ping : null,
+                time: b.time,
+              })),
             };
           }),
         })),
@@ -120,18 +120,23 @@ export class SolSource {
       };
     }
     const newlyDown: SolPollResult['newlyDown'] = [];
-    if (this.polled && next.reachable) {
-      const prev = new Map(
-        this.last.groups.flatMap((g) => g.monitors.map((m) => [m.id, m.state] as const)),
-      );
-      for (const g of next.groups) {
-        for (const m of g.monitors) {
-          if (m.state === 'down' && prev.get(m.id) !== 'down')
-            newlyDown.push({ groupName: g.name, monitorName: m.name });
+    if (next.reachable) {
+      if (this.polled) {
+        const prev = new Map(
+          this.lastSuccessful.groups.flatMap((g) =>
+            g.monitors.map((m) => [m.id, m.state] as const),
+          ),
+        );
+        for (const g of next.groups) {
+          for (const m of g.monitors) {
+            if (m.state === 'down' && prev.get(m.id) !== 'down')
+              newlyDown.push({ groupName: g.name, monitorName: m.name });
+          }
         }
       }
+      this.lastSuccessful = next;
+      this.polled = true;
     }
-    this.polled = true;
     this.last = next;
     return { snapshot: next, newlyDown };
   }
