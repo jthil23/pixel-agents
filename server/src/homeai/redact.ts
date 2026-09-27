@@ -11,7 +11,7 @@ const SHAPES: RegExp[] = [
   /\bgithub_pat_[A-Za-z0-9_]{8,}/g,
   /\bxox[abprs]-[A-Za-z0-9-]{6,}/g,
 ];
-const BEARER = /\b(Bearer\s+)\S+/gi;
+const BEARER = /\b(Bearer\s+)[-A-Za-z0-9._~+/]+=*/gi;
 const URL_PASSWORD = /(\b[a-z][a-z0-9+.-]*:\/\/[^\s:@/]+:)([^\s@/]+)(@)/gi;
 const NAME_VALUE =
   /(?<!:\/\/)(["']?)([A-Za-z0-9_.-]*(?:key|token|secret|password|passwd|auth)[A-Za-z0-9_.-]*)\1(\s*[:=]\s*)(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|([^\s};]+))/gi;
@@ -37,10 +37,14 @@ export function createRedactor(env: NodeJS.ProcessEnv = process.env): (s: string
         doubleValue: string | undefined,
         singleValue: string | undefined,
         unquotedValue: string | undefined,
+        offset: number,
       ) => {
+        const schemeStart = s.lastIndexOf('://', offset);
+        if (schemeStart !== -1 && !/[\s/@]/.test(s.slice(schemeStart + 3, offset))) return match;
+        const value = doubleValue ?? singleValue ?? unquotedValue;
         if (
           name.toLowerCase() === 'authorization' &&
-          (doubleValue ?? singleValue ?? unquotedValue)?.toLowerCase() === 'bearer'
+          (value?.toLowerCase() === 'bearer' || value?.toLowerCase().startsWith('bearer '))
         )
           return match;
         const quote = doubleValue !== undefined ? '"' : singleValue !== undefined ? "'" : '';

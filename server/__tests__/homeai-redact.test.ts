@@ -52,6 +52,20 @@ describe('redactor', () => {
     );
   });
 
+  it('bounds Bearer credentials at token68 delimiters and redacts embedded tokens', () => {
+    expect(redact('{"Authorization":"Bearer abcdefgh12345","note":"visible"}')).toBe(
+      `{"Authorization":"Bearer ${MASK}","note":"visible"}`,
+    );
+    expect(redact('{"password":"correct horse Bearer abc123"}')).toBe(`{"password":"${MASK}"}`);
+    expect(redact('Authorization: Bearer abc123')).toBe(`Authorization: Bearer ${MASK}`);
+  });
+
+  it('does not reprocess URL userinfo for arbitrary secret-looking usernames', () => {
+    expect(redact('mysql://apiKey:hunter22@192.168.1.103:3366/db')).toBe(
+      `mysql://apiKey:${MASK}@192.168.1.103:3366/db`,
+    );
+  });
+
   it('leaves ordinary text alone', () => {
     const plain = 'Reading magic keywords doc · ssh sol nvidia-smi · Editing keyboard.ts';
     expect(redact(plain)).toBe(plain);
