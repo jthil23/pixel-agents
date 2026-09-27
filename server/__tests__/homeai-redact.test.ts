@@ -79,7 +79,7 @@ describe('redactor', () => {
       `mysql://token:${MASK}@192.168.1.103:3366/db`,
     );
     expect(redact('http://apiKey=abc12345')).toBe(`http://apiKey=${MASK}`);
-    expect(redact('https://h/cb?token=abc123&x=1')).toBe(`https://h/cb?token=${MASK}&x=1`);
+    expect(redact('https://h/cb?token="abc123"&x=1')).toBe(`https://h/cb?token="${MASK}"&x=1`);
     expect(redact('url=http://host password=x')).toBe('url=http://host password=' + MASK);
   });
   it('keeps generated userinfo placeholders collision-safe', () => {

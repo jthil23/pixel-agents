@@ -17,7 +17,7 @@ const BEARER = /\b(Bearer\s+)[-A-Za-z0-9._~+/]+=*/gi;
 const URL_PASSWORD = /(\b[a-z][a-z0-9+.-]*:\/\/[^\s:@/]+:)([^\s@/]+)(@)/gi;
 const URL_USERINFO = /\b[a-z][a-z0-9+.-]*:\/\/[^\s\/@"'?#]*@/gi;
 const URL_QUERY_SECRET =
-  /([?&])([A-Za-z0-9_.-]*(?:key|token|secret|password|passwd|auth)[A-Za-z0-9_.-]*)=([^&#\s"']*)/gi;
+  /([?&])([A-Za-z0-9_.-]*(?:key|token|secret|password|passwd|auth)[A-Za-z0-9_.-]*)=([^&#\s"']+)(?=[&#\s]|#|$)/gi;
 const NAME_VALUE =
   /(["']?)([A-Za-z0-9_.-]*(?:key|token|secret|password|passwd|auth)[A-Za-z0-9_.-]*)\1(\s*[:=]\s*)(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|([^\s};]+))/gi;
 
