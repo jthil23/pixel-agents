@@ -8,6 +8,10 @@ import {
   ZOOM_MIN,
   ZOOM_SCROLL_THRESHOLD,
 } from '../../constants.js';
+import type { CabinetBox } from '../../homeai/geometry.js';
+import { hitCabinet } from '../../homeai/geometry.js';
+import { homeAiState, openCabinetPanel } from '../../homeai/homeAiStore.js';
+import { renderHomeAiLayer } from '../../homeai/renderHomeAi.js';
 import { unlockAudio } from '../../notificationSound.js';
 import { transport } from '../../transport/index.js';
 import { getColorizedSprite } from '../colorize.js';
@@ -68,6 +72,7 @@ export function OfficeCanvas({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const offsetRef = useRef({ x: 0, y: 0 });
+  const homeAiBoxesRef = useRef<CabinetBox[]>([]);
   // Middle-mouse pan state (imperative, no re-renders)
   const isPanningRef = useRef(false);
   const panStartRef = useRef({ mouseX: 0, mouseY: 0, panX: 0, panY: 0 });
@@ -296,6 +301,18 @@ export function OfficeCanvas({
           officeState.pets,
         );
         offsetRef.current = { x: offsetX, y: offsetY };
+        homeAiBoxesRef.current = renderHomeAiLayer({
+          ctx,
+          state: homeAiState(),
+          layout,
+          characters: officeState.getCharacters(),
+          offsetX,
+          offsetY,
+          zoom,
+          width: w,
+          height: h,
+          now: Date.now(),
+        });
 
         // Store delete/rotate button bounds for hit-testing
         deleteButtonBoundsRef.current = editorRender?.deleteButtonBounds ?? null;
@@ -722,6 +739,11 @@ export function OfficeCanvas({
       if (isEditMode) return; // handled by mouseDown/mouseUp
       const pos = screenToWorld(e.clientX, e.clientY);
       if (!pos) return;
+      const cabinet = hitCabinet(homeAiBoxesRef.current, pos.worldX, pos.worldY);
+      if (cabinet) {
+        openCabinetPanel(cabinet);
+        return;
+      }
 
       const hitId = officeState.getCharacterAt(pos.worldX, pos.worldY);
       if (hitId !== null) {

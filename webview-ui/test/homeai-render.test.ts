@@ -48,10 +48,13 @@ test('overlay text scales with zoom and clips to nameplate, board, and cabinet w
     cronOk: 123456,
     cronFailed: 123456,
   };
+  const areaTiles = Array.from({ length: 90 }, () => 'Server Room');
+  for (let col = 0; col < 5; col++) areaTiles[col] = 'Break Room';
+  for (let col = 5; col < 10; col++) areaTiles[col] = 'Mailroom';
   const layout = {
     cols: 10,
     rows: 9,
-    areaTiles: Array.from({ length: 90 }, () => 'Server Room'),
+    areaTiles,
     furniture: [{ type: 'WHITEBOARD', col: 0, row: 0 }],
   } as unknown as OfficeLayout;
 
@@ -69,6 +72,9 @@ test('overlay text scales with zoom and clips to nameplate, board, and cabinet w
   });
 
   assert.ok(drawn.some((entry) => entry.text.endsWith('…')));
+  assert.ok(drawn.some((entry) => entry.text === 'Break Room'));
+  assert.ok(drawn.some((entry) => entry.text === 'Mailroom'));
+  assert.ok(drawn.some((entry) => entry.text === 'Server Room'));
   const boardLines = drawn.filter(
     (entry) =>
       ['TODAY', 'waiting for data…'].includes(entry.text) ||

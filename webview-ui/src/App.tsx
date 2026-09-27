@@ -13,6 +13,8 @@ import { Tooltip } from './components/Tooltip.js';
 import { Modal } from './components/ui/Modal.js';
 import { VersionIndicator } from './components/VersionIndicator.js';
 import { ZoomControls } from './components/ZoomControls.js';
+import { HomeAiPanel } from './homeai/HomeAiPanel.js';
+import { openAgentPanel, tickHomeAi } from './homeai/homeAiStore.js';
 import { useEditorActions } from './hooks/useEditorActions.js';
 import { useEditorKeyboard } from './hooks/useEditorKeyboard.js';
 import { useExtensionMessages } from './hooks/useExtensionMessages.js';
@@ -238,6 +240,12 @@ function App() {
     const meta = os.subagentMeta.get(agentId);
     const focusId = meta ? meta.parentAgentId : agentId;
     transport.send({ type: 'focusAgent', id: focusId });
+    openAgentPanel(focusId);
+  }, []);
+
+  useEffect(() => {
+    const timer = setInterval(() => tickHomeAi(), 1000);
+    return () => clearInterval(timer);
   }, []);
 
   const officeState = getOfficeState();
@@ -437,6 +445,7 @@ function App() {
             onCloseAgent={handleCloseAgent}
             alwaysShowOverlay={alwaysShowOverlay}
           />
+          <HomeAiPanel />
         </>
       ) : (
         <DebugView

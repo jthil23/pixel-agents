@@ -76,7 +76,22 @@ export function renderHomeAiLayer(a: HomeAiRenderArgs): CabinetBox[] {
       (b.maxCol - b.minCol + 1) * TILE_SIZE * zoom - 6 * zoom,
     );
   }
-
+  for (const label of ['Break Room', 'Mailroom', 'Server Room']) {
+    const b = areaBounds(layout, label);
+    if (!b) continue;
+    const centerX =
+      label === 'Break Room'
+        ? b.minCol * TILE_SIZE + 6 * TILE_SIZE
+        : ((b.minCol + b.maxCol + 1) / 2) * TILE_SIZE;
+    drawSign(
+      ctx,
+      px(centerX),
+      py(b.minRow * TILE_SIZE + 2),
+      label,
+      zoom,
+      (b.maxCol - b.minCol + 1) * TILE_SIZE * zoom - 6 * zoom,
+    );
+  }
   // Server room cabinets
   let boxes: CabinetBox[] = [];
   const server = areaBounds(layout, 'Server Room');
