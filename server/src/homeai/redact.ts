@@ -11,10 +11,10 @@ const SHAPES: RegExp[] = [
   /\bgithub_pat_[A-Za-z0-9_]{8,}/g,
   /\bxox[abprs]-[A-Za-z0-9-]{6,}/g,
 ];
-const BEARER = /\b(Bearer\s+)[A-Za-z0-9._~+/=-]{8,}/gi;
+const BEARER = /\b(Bearer\s+)\S+/gi;
 const URL_PASSWORD = /(\b[a-z][a-z0-9+.-]*:\/\/[^\s:@/]+:)([^\s@/]+)(@)/gi;
 const NAME_VALUE =
-  /(["']?)([A-Za-z0-9_.-]*(?:key|token|secret|password|passwd|auth)[A-Za-z0-9_.-]*)\1(\s*[:=]\s*)(["']?)([^\s"',}]+)\4/gi;
+  /(?<!:\/\/)(["']?)([A-Za-z0-9_.-]*(?:key|token|secret|password|passwd|auth)[A-Za-z0-9_.-]*)\1(\s*[:=]\s*)(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|([^\s};]+))/gi;
 
 export function createRedactor(env: NodeJS.ProcessEnv = process.env): (s: string) => string {
   const values = Object.entries(env)
@@ -29,10 +29,22 @@ export function createRedactor(env: NodeJS.ProcessEnv = process.env): (s: string
     s = s.replace(URL_PASSWORD, `$1${MASK}$3`);
     s = s.replace(
       NAME_VALUE,
-      (match, q1: string, name: string, sep: string, q2: string, value: string) => {
-        if (name.toLowerCase() === 'authorization' && value.toLowerCase() === 'bearer')
+      (
+        match,
+        q1: string,
+        name: string,
+        sep: string,
+        doubleValue: string | undefined,
+        singleValue: string | undefined,
+        unquotedValue: string | undefined,
+      ) => {
+        if (
+          name.toLowerCase() === 'authorization' &&
+          (doubleValue ?? singleValue ?? unquotedValue)?.toLowerCase() === 'bearer'
+        )
           return match;
-        return `${q1}${name}${q1}${sep}${q2}${MASK}${q2}`;
+        const quote = doubleValue !== undefined ? '"' : singleValue !== undefined ? "'" : '';
+        return `${q1}${name}${q1}${sep}${quote}${MASK}${quote}`;
       },
     );
     return s;

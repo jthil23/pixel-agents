@@ -35,6 +35,23 @@ describe('redactor', () => {
     expect(redact('"apiKey": "xyz12345"')).toBe(`"apiKey": "${MASK}"`);
   });
 
+  it('masks complete quoted values and unquoted tokens through commas', () => {
+    expect(redact('{"password":"correct horse battery staple"}')).toBe(`{"password":"${MASK}"}`);
+    expect(redact('{"apiKey":"abc,def12345"}')).toBe(`{"apiKey":"${MASK}"}`);
+    expect(redact('{"password":"a\\"b c"}')).toBe(`{"password":"${MASK}"}`);
+    expect(redact('API_TOKEN=abc,def12345')).toBe(`API_TOKEN=${MASK}`);
+  });
+
+  it('masks short bearer credentials', () => {
+    expect(redact('Authorization: Bearer abc123')).toBe(`Authorization: Bearer ${MASK}`);
+  });
+
+  it('preserves URL userinfo structure when masking password', () => {
+    expect(redact('mysql://token:hunter22@192.168.1.103:3366/db')).toBe(
+      `mysql://token:${MASK}@192.168.1.103:3366/db`,
+    );
+  });
+
   it('leaves ordinary text alone', () => {
     const plain = 'Reading magic keywords doc · ssh sol nvidia-smi · Editing keyboard.ts';
     expect(redact(plain)).toBe(plain);
