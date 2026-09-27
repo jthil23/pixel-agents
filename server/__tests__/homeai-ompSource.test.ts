@@ -147,4 +147,82 @@ describe('OmpSource', () => {
     setMtime(oldFile, NOW - 8 * 86_400_000);
     expect(src.discover()).toEqual([{ folderName: 'Home-AI', lastActive: NOW - 60_000 }]);
   });
+  it('does not extend an old session’s idle clock during initial replay', () => {
+    setMtime(sessionFile, NOW - ACTIVE_WINDOW_MS + 60_000);
+    src.discover();
+    src.poll();
+    expect(sink.upserts.some((agent) => agent.key === sessionFile)).toBe(true);
+    now = NOW + 2 * 60_000;
+    src.poll();
+    expect(sink.removed).toContain(sessionFile);
+  });
+
+  it('keeps a resumed session alive when new work follows a historical session_exit', () => {
+    fs.writeFileSync(sessionFile, `${header('s1', 'G:\\Home-AI')}\n`);
+    setMtime(sessionFile, NOW - 60_000);
+    src.discover();
+    src.poll();
+    fs.appendFileSync(
+      sessionFile,
+      `${JSON.stringify({ type: 'custom', customType: 'session_exit', data: {}, timestamp: 'x' })}\n`,
+    );
+    setMtime(sessionFile, NOW - 30_000);
+    src.poll();
+    expect(sink.removed).toContain(sessionFile);
+
+    fs.appendFileSync(sessionFile, `${call('resumed')}\n`);
+    setMtime(sessionFile, NOW - 10_000);
+    src.discover();
+    src.poll();
+    const upsertCount = sink.upserts.filter((agent) => agent.key === sessionFile).length;
+    expect(upsertCount).toBe(2);
+    now = NOW + 1_000;
+    src.poll();
+    expect(sink.removed.filter((key) => key === sessionFile)).toHaveLength(1);
+  });
+
+  it('tracks an active child and its idle parent', () => {
+    const parent = path.join(root, '--G--Home-AI--', 'idle-parent.jsonl');
+    fs.writeFileSync(parent, `${header('parent', '/work/Parent')}\n`);
+    setMtime(parent, NOW - ACTIVE_WINDOW_MS - 60_000);
+    const child = path.join(parent.slice(0, -'.jsonl'.length), 'Scout.jsonl');
+    fs.mkdirSync(path.dirname(child), { recursive: true });
+    fs.writeFileSync(child, `${header('scout', '/work/Child')}\n`);
+    setMtime(child, NOW - 60_000);
+
+    src.discover();
+    src.poll();
+
+    const parentIndex = sink.upserts.findIndex((agent) => agent.key === parent);
+    const childIndex = sink.upserts.findIndex((agent) => agent.key === child);
+    expect(parentIndex).toBeGreaterThanOrEqual(0);
+    expect(childIndex).toBeGreaterThan(parentIndex);
+    expect(sink.upserts[childIndex]).toEqual(
+      expect.objectContaining({ role: 'subagent', parentKey: parent }),
+    );
+  });
+
+  it('includes nested transcript folders and reports the newest activity per folder', () => {
+    const parent = path.join(root, '--G--Home-AI--', 'room-parent.jsonl');
+    const child = path.join(parent.slice(0, -'.jsonl'.length), 'Scout.jsonl');
+    fs.writeFileSync(parent, `${header('parent', '/work/Shared')}\n`);
+    fs.mkdirSync(path.dirname(child), { recursive: true });
+    fs.writeFileSync(child, `${header('scout', '/work/Shared')}\n`);
+    setMtime(parent, NOW - 60_000);
+    setMtime(child, NOW - 10_000);
+    const childOnly = path.join(path.dirname(child), 'Other.jsonl');
+    fs.writeFileSync(childOnly, `${header('other', '/work/Child')}\n`);
+    setMtime(childOnly, NOW - 5_000);
+
+    expect(src.discover()).toEqual(
+      expect.arrayContaining([{ folderName: 'Shared', lastActive: NOW - 10_000 }]),
+    );
+
+    expect(src.discover()).toEqual(
+      expect.arrayContaining([
+        { folderName: 'Shared', lastActive: NOW - 10_000 },
+        { folderName: 'Child', lastActive: NOW - 5_000 },
+      ]),
+    );
+  });
 });

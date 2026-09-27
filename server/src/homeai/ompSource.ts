@@ -75,19 +75,44 @@ export class OmpSource {
     for (const projectDir of dirents(this.o.root).filter((d) => d.isDirectory())) {
       const dir = path.join(this.o.root, projectDir.name);
       for (const f of dirents(dir).filter((d) => d.isFile() && d.name.endsWith('.jsonl'))) {
-        const file = path.join(dir, f.name);
-        const mtime = mtimeMs(file);
-        if (now - mtime <= this.o.roomActivityDays * DAY_MS) {
-          const cwd = this.readHeaderCwd(file);
-          if (cwd) {
-            const folder = folderOf(cwd);
-            rooms.set(folder, Math.max(rooms.get(folder) ?? 0, mtime));
-          }
-        }
-        if (now - mtime <= ACTIVE_WINDOW_MS) this.track(file, 'session', undefined, 0);
+        this.discoverTree(path.join(dir, f.name), 'session', undefined, 0, now, rooms);
       }
     }
     return [...rooms].map(([folderName, lastActive]) => ({ folderName, lastActive }));
+  }
+
+  private discoverTree(
+    file: string,
+    role: AgentRole,
+    parentKey: string | undefined,
+    depth: number,
+    now: number,
+    rooms: Map<string, number>,
+  ): boolean {
+    const mtime = mtimeMs(file);
+    if (now - mtime <= this.o.roomActivityDays * DAY_MS) {
+      const cwd = this.readHeaderCwd(file);
+      if (cwd) {
+        const folder = folderOf(cwd);
+        rooms.set(folder, Math.max(rooms.get(folder) ?? 0, mtime));
+      }
+    }
+    let hasActiveDescendant = false;
+    if (depth < MAX_DEPTH) {
+      const childDir = file.slice(0, -'.jsonl'.length);
+      for (const child of dirents(childDir).filter(
+        (d) => d.isFile() && d.name.endsWith('.jsonl'),
+      )) {
+        const childFile = path.join(childDir, child.name);
+        const childRole = child.name.startsWith('__advisor') ? 'advisor' : 'subagent';
+        if (this.discoverTree(childFile, childRole, file, depth + 1, now, rooms)) {
+          hasActiveDescendant = true;
+        }
+      }
+    }
+    const active = now - mtime <= ACTIVE_WINDOW_MS;
+    if (active || hasActiveDescendant) this.track(file, role, parentKey, depth);
+    return active || hasActiveDescendant;
   }
 
   poll(): void {
@@ -98,7 +123,8 @@ export class OmpSource {
         this.drop(t);
         continue;
       }
-      if (lines.length > 0) t.lastDataAt = now;
+      let justRegistered = false;
+      if (lines.length > 0 && t.registered) t.lastDataAt = now;
       if (lines.length > 0 || (!t.registered && t.pending.length > 0)) {
         const events = [...t.pending, ...lines.flatMap((l) => t.parser.parseLine(l))];
         t.pending = [];
@@ -106,14 +132,19 @@ export class OmpSource {
         if (!t.registered && !this.register(t, events)) {
           t.pending = events;
         } else {
+          justRegistered = replay;
           this.o.sink.applyEvents(t.key, events, replay);
-          if (events.some((e) => e.kind === 'sessionExit')) {
+          const lastExit = events.findLastIndex((e) => e.kind === 'sessionExit');
+          if (
+            lastExit !== -1 &&
+            !events.slice(lastExit + 1).some((e) => e.kind !== 'sessionExit')
+          ) {
             this.drop(t);
             continue;
           }
         }
       }
-      if (now - t.lastDataAt > ACTIVE_WINDOW_MS) this.drop(t);
+      if (!justRegistered && now - t.lastDataAt > ACTIVE_WINDOW_MS) this.drop(t);
     }
   }
 
