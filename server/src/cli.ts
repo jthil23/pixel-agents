@@ -27,6 +27,7 @@ import {
 } from './configPersistence.js';
 import { MAX_PORT, MIN_PORT } from './constants.js';
 import { FileStateAdapter } from './fileStateAdapter.js';
+import { runHomeAi, runSetPasscode } from './homeai/main.js';
 import { claudeProvider, copyHookScript, hookProviderById } from './providers/index.js';
 import { PixelAgentsServer } from './server.js';
 
@@ -104,6 +105,9 @@ function copyHookScriptOrReport(packageRoot: string, context = ''): boolean {
 // ── Main ──────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
+  const rawArgs = process.argv.slice(2);
+  if (rawArgs[0] === 'set-passcode') return runSetPasscode();
+  if (rawArgs.includes('--home-ai')) return runHomeAi(__dirname, rawArgs);
   let args: CliArgs;
   try {
     args = parseArgs(process.argv.slice(2));
