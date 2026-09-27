@@ -68,6 +68,7 @@ export function requestTranscript(agentId: number): void {
     pendingWindow.opener = null;
     pendingWindows.set(agentId, pendingWindow);
   }
+  transport.send({ type: 'requestTranscriptLink', agentId });
 }
 
 function subscribe(listener: () => void): () => void {

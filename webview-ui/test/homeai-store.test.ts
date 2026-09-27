@@ -4,8 +4,13 @@ import { afterEach, test, vi } from 'vitest';
 vi.mock('../src/transport/index.js', () => ({ transport: { send: vi.fn() } }));
 
 import { playDoneSound, setSoundEnabled } from '../src/notificationSound.js';
-import { handleHomeAiMessage, requestTranscript } from '../src/homeai/homeAiStore.js';
+import {
+  handleHomeAiMessage,
+  openAgentPanel,
+  requestTranscript,
+} from '../src/homeai/homeAiStore.js';
 import { isMuted, playSound, setMuted } from '../src/homeai/sound.js';
+import { transport } from '../src/transport/index.js';
 
 const opened: { location: { href: string }; closed: boolean; opener: Window | null }[] = [];
 const windowStub = {
@@ -95,6 +100,30 @@ test('transcript responses only navigate or close the matching agent tab', () =>
 
   handleHomeAiMessage({ type: 'transcriptLink', agentId: 8, reason: 'not hosted' });
   assert.equal(opened[1].closed, true);
+});
+
+test('transcript and agent detail requests reach the transport', () => {
+  globalThis.window = windowStub as unknown as Window;
+  const send = vi.mocked(transport.send);
+  send.mockClear();
+  handleHomeAiMessage({ type: 'ambientSun', phase: 'day', elevation: 10 });
+
+  requestTranscript(7);
+  requestTranscript(8);
+  assert.deepEqual(
+    send.mock.calls.map(([message]) => message),
+    [
+      { type: 'requestTranscriptLink', agentId: 7 },
+      { type: 'requestTranscriptLink', agentId: 8 },
+    ],
+  );
+
+  send.mockClear();
+  openAgentPanel(9);
+  assert.deepEqual(
+    send.mock.calls.map(([message]) => message),
+    [{ type: 'requestAgentDetail', agentId: 9 }],
+  );
 });
 
 test('mute remains effective when localStorage access throws', () => {
