@@ -38,7 +38,14 @@ export type ServerMessage =
   | ExternalAssetDirectoriesUpdated
   | AreaMappingsLoaded
   | WorkspaceFolders
-  | AgentDiagnostics;
+  | AgentDiagnostics
+  | AmbientSol
+  | AmbientSun
+  | OfficeStats
+  | OfficeEffect
+  | ProjectRooms
+  | AgentDetail
+  | TranscriptLink;
 
 export type ClientMessage =
   | WebviewReady
@@ -62,7 +69,9 @@ export type ClientMessage =
   | RemoveExternalAssetDirectory
   | SaveAreaMappings
   | SetShowAreas
-  | RequestDiagnostics;
+  | RequestDiagnostics
+  | RequestAgentDetail
+  | RequestTranscriptLink;
 
 export interface ProviderCapabilities {
   type: 'providerCapabilities';
@@ -315,6 +324,104 @@ export interface AgentDiagnostics {
   agents: Record<string, any>[];
 }
 
+export interface AmbientSol {
+  type: 'ambientSol';
+  reachable: boolean;
+  groups: SolGroup[];
+}
+
+export interface SolGroup {
+  name: string;
+  monitors: SolMonitor[];
+}
+
+export interface SolMonitor {
+  id: number;
+  name: string;
+  state: AnonymousSchema_199;
+  uptime24h?: number | null;
+  beats: SolBeat[];
+}
+
+export type AnonymousSchema_199 =
+  'up' | 'flapping' | 'pending' | 'maintenance' | 'down' | 'unknown';
+
+export interface SolBeat {
+  status: number;
+  ping?: number | null;
+  time: string;
+}
+
+export interface AmbientSun {
+  type: 'ambientSun';
+  phase: AnonymousSchema_206;
+  elevation?: number | null;
+}
+
+export type AnonymousSchema_206 = 'day' | 'golden' | 'dusk' | 'night';
+
+export interface OfficeStats {
+  type: 'officeStats';
+  date: string;
+  spendByModel: Record<string, number>;
+  openclawTokens: number;
+  toolCalls: number;
+  busiestAgent?: string | null;
+  cronOk: number;
+  cronFailed: number;
+  solUptime24h?: number | null;
+}
+
+export interface OfficeEffect {
+  type: 'officeEffect';
+  effect: AnonymousSchema_219;
+  agentId?: number;
+  groupName?: string;
+  reason?: string;
+  severity?: string;
+}
+
+export type AnonymousSchema_219 =
+  'confetti' | 'alarm' | 'envelope' | 'phone' | 'clock' | 'cronFailed' | 'advice' | 'doze' | 'wake';
+
+export interface ProjectRooms {
+  type: 'projectRooms';
+  rooms: ProjectRoom[];
+}
+
+export interface ProjectRoom {
+  label: string;
+  projectName: string;
+}
+
+export interface AgentDetail {
+  type: 'agentDetail';
+  agentId: number;
+  title: string;
+  source: AnonymousSchema_231;
+  role: string;
+  model: string;
+  costUsd: number;
+  contextTokens: number;
+  recentTools: DetailTool[];
+  canOpenTranscript: boolean;
+}
+
+export type AnonymousSchema_231 = 'omp' | 'openclaw';
+
+export interface DetailTool {
+  status: string;
+  done: boolean;
+  isError: boolean;
+}
+
+export interface TranscriptLink {
+  type: 'transcriptLink';
+  agentId: number;
+  url?: string;
+  reason?: string;
+}
+
 export interface WebviewReady {
   type: 'webviewReady';
 }
@@ -428,4 +535,14 @@ export interface SetShowAreas {
 
 export interface RequestDiagnostics {
   type: 'requestDiagnostics';
+}
+
+export interface RequestAgentDetail {
+  type: 'requestAgentDetail';
+  agentId: number;
+}
+
+export interface RequestTranscriptLink {
+  type: 'requestTranscriptLink';
+  agentId: number;
 }

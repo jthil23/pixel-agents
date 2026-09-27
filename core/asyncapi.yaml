@@ -118,6 +118,14 @@ components:
         - $ref: '#/components/schemas/WorkspaceFolders'
         # Diagnostics
         - $ref: '#/components/schemas/AgentDiagnostics'
+        # Home-AI office
+        - $ref: '#/components/schemas/AmbientSol'
+        - $ref: '#/components/schemas/AmbientSun'
+        - $ref: '#/components/schemas/OfficeStats'
+        - $ref: '#/components/schemas/OfficeEffect'
+        - $ref: '#/components/schemas/ProjectRooms'
+        - $ref: '#/components/schemas/AgentDetail'
+        - $ref: '#/components/schemas/TranscriptLink'
       discriminator: type
 
     ClientMessage:
@@ -144,6 +152,9 @@ components:
         - $ref: '#/components/schemas/SaveAreaMappings'
         - $ref: '#/components/schemas/SetShowAreas'
         - $ref: '#/components/schemas/RequestDiagnostics'
+        # Home-AI office
+        - $ref: '#/components/schemas/RequestAgentDetail'
+        - $ref: '#/components/schemas/RequestTranscriptLink'
       discriminator: type
 
     # ── Server message variants ────────────────────────────────────
@@ -1195,4 +1206,211 @@ components:
         animationGroup:
           type: string
         frame:
+          type: integer
+    SolBeat:
+      type: object
+      additionalProperties: false
+      required: [status, time]
+      properties:
+        status:
+          type: integer
+          description: Uptime Kuma status (0 down, 1 up, 2 pending, 3 maintenance).
+        ping:
+          type: [number, 'null']
+        time:
+          type: string
+          description: UTC "YYYY-MM-DD HH:MM:SS.mmm".
+    SolMonitor:
+      type: object
+      additionalProperties: false
+      required: [id, name, state, beats]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        state:
+          type: string
+          enum: [up, flapping, pending, maintenance, down, unknown]
+        uptime24h:
+          type: [number, 'null']
+        beats:
+          type: array
+          items:
+            $ref: '#/components/schemas/SolBeat'
+    SolGroup:
+      type: object
+      additionalProperties: false
+      required: [name, monitors]
+      properties:
+        name:
+          type: string
+        monitors:
+          type: array
+          items:
+            $ref: '#/components/schemas/SolMonitor'
+    AmbientSol:
+      description: SOL server-room state from Uptime Kuma (one cabinet per group).
+      type: object
+      additionalProperties: false
+      required: [type, reachable, groups]
+      properties:
+        type:
+          const: ambientSol
+        reachable:
+          type: boolean
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/SolGroup'
+    AmbientSun:
+      description: Day/night phase from Home Assistant sun.sun (clock fallback).
+      type: object
+      additionalProperties: false
+      required: [type, phase]
+      properties:
+        type:
+          const: ambientSun
+        phase:
+          type: string
+          enum: [day, golden, dusk, night]
+        elevation:
+          type: [number, 'null']
+    OfficeStats:
+      description: Whiteboard numbers for today (local midnight onward).
+      type: object
+      additionalProperties: false
+      required: [type, date, spendByModel, openclawTokens, toolCalls, cronOk, cronFailed]
+      properties:
+        type:
+          const: officeStats
+        date:
+          type: string
+        spendByModel:
+          type: object
+          additionalProperties:
+            type: number
+        openclawTokens:
+          type: integer
+        toolCalls:
+          type: integer
+        busiestAgent:
+          type: [string, 'null']
+        cronOk:
+          type: integer
+        cronFailed:
+          type: integer
+        solUptime24h:
+          type: [number, 'null']
+    OfficeEffect:
+      description: Transient visual/audio effect.
+      type: object
+      additionalProperties: false
+      required: [type, effect]
+      properties:
+        type:
+          const: officeEffect
+        effect:
+          type: string
+          enum: [confetti, alarm, envelope, phone, clock, cronFailed, advice, doze, wake]
+        agentId:
+          type: integer
+        groupName:
+          type: string
+        reason:
+          type: string
+        severity:
+          type: string
+    ProjectRoom:
+      type: object
+      additionalProperties: false
+      required: [label, projectName]
+      properties:
+        label:
+          type: string
+        projectName:
+          type: string
+    ProjectRooms:
+      description: Which project folder each Project Room hosts (room signs).
+      type: object
+      additionalProperties: false
+      required: [type, rooms]
+      properties:
+        type:
+          const: projectRooms
+        rooms:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectRoom'
+    DetailTool:
+      type: object
+      additionalProperties: false
+      required: [status, done, isError]
+      properties:
+        status:
+          type: string
+        done:
+          type: boolean
+        isError:
+          type: boolean
+    AgentDetail:
+      description: Side-panel details for one character (reply to requestAgentDetail).
+      type: object
+      additionalProperties: false
+      required: [type, agentId, title, source, role, model, costUsd, contextTokens, recentTools, canOpenTranscript]
+      properties:
+        type:
+          const: agentDetail
+        agentId:
+          type: integer
+        title:
+          type: string
+        source:
+          type: string
+          enum: [omp, openclaw]
+        role:
+          type: string
+        model:
+          type: string
+        costUsd:
+          type: number
+        contextTokens:
+          type: integer
+        recentTools:
+          type: array
+          items:
+            $ref: '#/components/schemas/DetailTool'
+        canOpenTranscript:
+          type: boolean
+    TranscriptLink:
+      description: Read-only collab view URL for a character's root omp session.
+      type: object
+      additionalProperties: false
+      required: [type, agentId]
+      properties:
+        type:
+          const: transcriptLink
+        agentId:
+          type: integer
+        url:
+          type: string
+        reason:
+          type: string
+    RequestAgentDetail:
+      type: object
+      additionalProperties: false
+      required: [type, agentId]
+      properties:
+        type:
+          const: requestAgentDetail
+        agentId:
+          type: integer
+    RequestTranscriptLink:
+      type: object
+      additionalProperties: false
+      required: [type, agentId]
+      properties:
+        type:
+          const: requestTranscriptLink
+        agentId:
           type: integer
