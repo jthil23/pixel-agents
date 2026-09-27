@@ -82,6 +82,24 @@ describe('redactor', () => {
     expect(redact('https://h/cb?token=abc123&x=1')).toBe(`https://h/cb?token=${MASK}&x=1`);
     expect(redact('url=http://host password=x')).toBe('url=http://host password=' + MASK);
   });
+  it('keeps generated userinfo placeholders collision-safe', () => {
+    expect(redact('note=\u00000\u0000 mysql://root:hunter22@host/db')).toBe(
+      `note=\u00000\u0000 mysql://root:${MASK}@host/db`,
+    );
+    expect(redact('password=http://privatevalue@host \u00000\u0000')).toBe(
+      `password=${MASK} \u00000\u0000`,
+    );
+  });
+
+  it('keeps ampersands inside ordinary unquoted secret values', () => {
+    expect(redact('API_TOKEN=abc&def12345')).toBe(`API_TOKEN=${MASK}`);
+    expect(redact('password=correct&horse')).toBe(`password=${MASK}`);
+  });
+
+  it('masks secret names with alternate query separators', () => {
+    expect(redact('?password:abc123')).toBe(`?password:${MASK}`);
+    expect(redact('&amp;token = abc123')).toBe(`&amp;token = ${MASK}`);
+  });
 
   it('does not confuse URL values with following JSON secrets', () => {
     expect(redact('{"url":"http://host","password":"hunter2"}')).toBe(
