@@ -1,4 +1,8 @@
 # scripts/home-ai/install.ps1 — run from an elevated PowerShell (firewall rule needs admin)
+param(
+  [switch]$ResetLayout
+)
+
 $ErrorActionPreference = 'Stop'
 
 $identity = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
@@ -20,10 +24,25 @@ $log = Join-Path $env:USERPROFILE '.pixel-agents\pixel-office.log'
 $state = Join-Path $env:USERPROFILE '.pixel-agents'
 New-Item -ItemType Directory -Force -Path $state | Out-Null
 
-# Layout: install once, keeping a backup of any existing layout.
+# Preserve Layout-editor changes unless the file is missing, not a home-ai layout, or reset was requested.
 $layout = Join-Path $state 'layout.json'
-if (Test-Path $layout) { Copy-Item $layout "$layout.bak-$(Get-Date -Format yyyyMMdd-HHmmss)" }
-Copy-Item (Join-Path $root 'dist\assets\home-ai-layout.json') $layout -Force
+$installLayout = $ResetLayout -or -not (Test-Path $layout)
+if (-not $installLayout) {
+  try {
+    $existingLayout = Get-Content $layout -Raw | ConvertFrom-Json -ErrorAction Stop
+    $hasMailroom = @($existingLayout.areas | Where-Object { $_.label -eq 'Mailroom' }).Count -gt 0 -or
+      @($existingLayout.areaTiles | Where-Object { $_ -eq 'Mailroom' }).Count -gt 0
+    $installLayout = -not $hasMailroom
+  } catch {
+    $installLayout = $true
+  }
+}
+if ($installLayout) {
+  if (Test-Path $layout) { Copy-Item $layout "$layout.bak-$(Get-Date -Format yyyyMMdd-HHmmss)" }
+  Copy-Item (Join-Path $root 'dist\assets\home-ai-layout.json') $layout -Force
+} else {
+  Write-Host 'Keeping existing home-ai layout'
+}
 
 # Scheduled task: node.exe is the task's own process (supervised), hidden via S4U, one instance only.
 $action = New-ScheduledTaskAction -Execute $node -Argument "dist\cli.js --home-ai --log `"$log`"" -WorkingDirectory $root
