@@ -28,6 +28,16 @@ test('areaBounds spans every tile with the label', () => {
   assert.equal(areaBounds(layout, 'Nope'), null);
 });
 
+test('areaBounds caches per layout identity and recomputes for a new layout', () => {
+  const first = areaBounds(layout, 'Server Room');
+  assert.equal(areaBounds(layout, 'Server Room'), first);
+
+  const nextLayout = { cols: 4, areaTiles: ['Server Room', null, null, null] };
+  const next = areaBounds(nextLayout, 'Server Room');
+  assert.notEqual(next, first);
+  assert.deepEqual(next, { minCol: 0, minRow: 0, maxCol: 0, maxRow: 0 });
+});
+
 test('cabinets line up left to right inside the room and are hit-testable', () => {
   const groups = [
     { name: 'Core', monitors: [] },

@@ -278,13 +278,14 @@ export function OfficeCanvas({
         };
 
         const layout = officeState.getLayout();
+        const characters = officeState.getCharacters();
         const { offsetX, offsetY } = renderFrame(
           ctx,
           w,
           h,
           officeState.tileMap,
           officeState.furniture,
-          officeState.getCharacters(),
+          characters,
           zoom,
           panRef.current.x,
           panRef.current.y,
@@ -301,18 +302,23 @@ export function OfficeCanvas({
           officeState.pets,
         );
         offsetRef.current = { x: offsetX, y: offsetY };
-        homeAiBoxesRef.current = renderHomeAiLayer({
-          ctx,
-          state: homeAiState(),
-          layout,
-          characters: officeState.getCharacters(),
-          offsetX,
-          offsetY,
-          zoom,
-          width: w,
-          height: h,
-          now: Date.now(),
-        });
+        const state = homeAiState();
+        if (state.active) {
+          homeAiBoxesRef.current = renderHomeAiLayer({
+            ctx,
+            state,
+            layout,
+            characters,
+            offsetX,
+            offsetY,
+            zoom,
+            width: w,
+            height: h,
+            now: Date.now(),
+          });
+        } else {
+          homeAiBoxesRef.current.length = 0;
+        }
 
         // Store delete/rotate button bounds for hit-testing
         deleteButtonBoundsRef.current = editorRender?.deleteButtonBounds ?? null;

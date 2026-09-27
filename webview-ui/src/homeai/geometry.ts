@@ -28,25 +28,35 @@ const CONFETTI_COUNT = 30;
 const CONFETTI_COLORS = ['#ff5252', '#ffd740', '#69f0ae', '#40c4ff', '#e040fb', '#ffffff'];
 const GRAVITY = 160;
 
-export function areaBounds(
-  layout: { cols: number; areaTiles?: Array<string | null> },
-  label: string,
-): Bounds | null {
-  let b: Bounds | null = null;
-  (layout.areaTiles ?? []).forEach((l, i) => {
-    if (l !== label) return;
-    const c = i % layout.cols;
-    const r = Math.floor(i / layout.cols);
-    b = b
-      ? {
-          minCol: Math.min(b.minCol, c),
-          minRow: Math.min(b.minRow, r),
-          maxCol: Math.max(b.maxCol, c),
-          maxRow: Math.max(b.maxRow, r),
+type AreaLayout = { cols: number; areaTiles?: Array<string | null> };
+const areaBoundsCache = new WeakMap<AreaLayout, Map<string, Bounds>>();
+
+export function areaBounds(layout: AreaLayout, label: string): Bounds | null {
+  let boundsByLabel = areaBoundsCache.get(layout);
+  if (!boundsByLabel) {
+    const computed = new Map<string, Bounds>();
+    const tiles = layout.areaTiles;
+    if (tiles) {
+      for (let i = 0; i < tiles.length; i++) {
+        const area = tiles[i];
+        if (area == null) continue;
+        const col = i % layout.cols;
+        const row = Math.floor(i / layout.cols);
+        const bounds = computed.get(area);
+        if (bounds) {
+          bounds.minCol = Math.min(bounds.minCol, col);
+          bounds.minRow = Math.min(bounds.minRow, row);
+          bounds.maxCol = Math.max(bounds.maxCol, col);
+          bounds.maxRow = Math.max(bounds.maxRow, row);
+        } else {
+          computed.set(area, { minCol: col, minRow: row, maxCol: col, maxRow: row });
         }
-      : { minCol: c, minRow: r, maxCol: c, maxRow: r };
-  });
-  return b;
+      }
+    }
+    areaBoundsCache.set(layout, computed);
+    boundsByLabel = computed;
+  }
+  return boundsByLabel.get(label) ?? null;
 }
 
 export function cabinetBoxes(bounds: Bounds, groups: SolGroup[]): CabinetBox[] {
