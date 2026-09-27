@@ -1,0 +1,40 @@
+export const MASK = '••••••';
+
+const SECRET_ENV_NAME = /(?:_KEY|_TOKEN|_SECRET)$|PASSWORD/i;
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const SHAPES: RegExp[] = [
+  /-----BEGIN [A-Z ]+-----[\s\S]*?-----END [A-Z ]+-----/g,
+  /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g,
+  /\bsk-[A-Za-z0-9_-]{8,}/g,
+  /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{8,}/g,
+  /\bgithub_pat_[A-Za-z0-9_]{8,}/g,
+  /\bxox[abprs]-[A-Za-z0-9-]{6,}/g,
+];
+const BEARER = /\b(Bearer\s+)[A-Za-z0-9._~+/=-]{8,}/gi;
+const URL_PASSWORD = /(\b[a-z][a-z0-9+.-]*:\/\/[^\s:@/]+:)([^\s@/]+)(@)/gi;
+const NAME_VALUE =
+  /(["']?)([A-Za-z0-9_.-]*(?:key|token|secret|password|passwd|auth)[A-Za-z0-9_.-]*)\1(\s*[:=]\s*)(["']?)([^\s"',}]+)\4/gi;
+
+export function createRedactor(env: NodeJS.ProcessEnv = process.env): (s: string) => string {
+  const values = Object.entries(env)
+    .filter(([name, v]) => SECRET_ENV_NAME.test(name) && typeof v === 'string' && v.length >= 8)
+    .map(([, v]) => v as string)
+    .sort((a, b) => b.length - a.length);
+  const envRe = values.length ? new RegExp(values.map(escapeRe).join('|'), 'g') : null;
+  return (input: string): string => {
+    let s = envRe ? input.replace(envRe, MASK) : input;
+    for (const re of SHAPES) s = s.replace(re, MASK);
+    s = s.replace(BEARER, `$1${MASK}`);
+    s = s.replace(URL_PASSWORD, `$1${MASK}$3`);
+    s = s.replace(
+      NAME_VALUE,
+      (match, q1: string, name: string, sep: string, q2: string, value: string) => {
+        if (name.toLowerCase() === 'authorization' && value.toLowerCase() === 'bearer')
+          return match;
+        return `${q1}${name}${q1}${sep}${q2}${MASK}${q2}`;
+      },
+    );
+    return s;
+  };
+}
