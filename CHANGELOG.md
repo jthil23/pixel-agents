@@ -12,6 +12,7 @@
 - **Sync agent state on standalone webview connect** ([#371](https://github.com/pixel-agents-hq/pixel-agents/pull/371)) — A standalone browser client that connects while agents are mid-work now receives active tool statuses, waiting status, and team metadata instead of showing every agent as idle until its next update.
 - **Consistent palette and hue for every client** ([#370](https://github.com/pixel-agents-hq/pixel-agents/pull/370)) — Character palette and hue shift are now assigned server-side at agent creation, so every connecting webview (including read-only viewers) sees the same colors instead of each connection rolling its own.
 - **Home-AI server privacy and stability** — Prevents replayed OpenClaw history from triggering mailroom effects after idle rediscovery, redacts transcript-derived agent details and statistics, constrains advice severity, and prunes stale transcript and login-failure cache entries.
+- **Preserve final live session effects on exit** — Applies a registered transcript's events through `session_exit` before removal, retaining final tool completions and yield/stop confetti; the webview keeps that confetti at the character's last rendered position until expiry.
 
 ### Maintenance
 

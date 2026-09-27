@@ -168,15 +168,14 @@ export function renderHomeAiLayer(a: HomeAiRenderArgs): CabinetBox[] {
     }
     for (const e of state.effects) {
       if (e.agentId !== ch.id || !effectIsLive(e, now)) continue;
+      if (e.kind === 'confetti') {
+        e.x = hx;
+        e.y = hy;
+        continue;
+      }
       const t = now - e.startedAt;
       const p = Math.min(1, t / EFFECT_MS[e.kind]);
       switch (e.kind) {
-        case 'confetti':
-          for (const part of confettiParticles(hx, hy, t, e.startedAt)) {
-            ctx.fillStyle = part.color;
-            ctx.fillRect(px(part.x), py(part.y), zoom, zoom);
-          }
-          break;
         case 'envelope':
           drawBitmap(ctx, ENVELOPE, px(hx - 60 * (1 - p) - 4), py(hy - 40 * (1 - p) - 8), zoom);
           break;
@@ -197,6 +196,16 @@ export function renderHomeAiLayer(a: HomeAiRenderArgs): CabinetBox[] {
           if (blinkOn) drawBitmap(ctx, BEACON_ON, px(hx - 3), py(hy - 12), zoom);
           break;
       }
+    }
+  }
+
+  // Confetti outlives the subagent's short despawn animation.
+  for (const e of state.effects) {
+    if (e.kind !== 'confetti' || !effectIsLive(e, now) || e.x === undefined || e.y === undefined)
+      continue;
+    for (const part of confettiParticles(e.x, e.y, now - e.startedAt, e.startedAt)) {
+      ctx.fillStyle = part.color;
+      ctx.fillRect(px(part.x), py(part.y), zoom, zoom);
     }
   }
 

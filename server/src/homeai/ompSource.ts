@@ -169,9 +169,11 @@ export class OmpSource {
               event.kind === 'usage',
           );
           if (!hasWorkAfterExit) {
+            if (t.registered) this.o.sink.applyEvents(t.key, events.slice(0, lastExit + 1), false);
             this.drop(t);
             continue;
           }
+          if (t.registered) this.o.sink.applyEvents(t.key, events.slice(0, lastExit + 1), false);
           events = [...t.metadata, ...resumedEvents];
           if (t.registered) {
             this.o.sink.removeAgent(t.key);

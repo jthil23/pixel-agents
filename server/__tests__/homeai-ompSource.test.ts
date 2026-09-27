@@ -36,6 +36,40 @@ const call = (id: string, name = 'read') =>
     message: { role: 'assistant', content: [{ type: 'toolCall', id, name, arguments: {} }] },
   });
 const setMtime = (file: string, ms: number) => fs.utimesSync(file, ms / 1000, ms / 1000);
+const result = (id: string, name = 'read', isError = false) =>
+  JSON.stringify({
+    type: 'message',
+    timestamp: '2026-09-27T14:59:11Z',
+    message: { role: 'toolResult', toolCallId: id, toolName: name, isError, content: [] },
+  });
+const exitLine = JSON.stringify({
+  type: 'custom',
+  customType: 'session_exit',
+  data: {},
+  timestamp: '2026-09-27T14:59:30Z',
+});
+const stopLine = JSON.stringify({
+  type: 'message',
+  timestamp: '2026-09-27T14:59:20Z',
+  message: { role: 'assistant', content: [{ type: 'text', text: 'done' }], stopReason: 'stop' },
+});
+const threeTools = [1, 2, 3].flatMap((n) => [call(`r${n}`), result(`r${n}`)]);
+const yieldExit = [...threeTools, call('y1', 'yield'), result('y1', 'yield'), exitLine];
+
+/** Real bridge + store; records confetti effects and removals in broadcast order. */
+function recordingBridge(now: () => number) {
+  const store = new AgentStateStore();
+  const bridge = new OfficeBridge({ store, redact: (text) => text, now });
+  const agentIds = new Map<string, number>();
+  const log: string[] = [];
+  store.on('agentAdded', (id, agent) => agentIds.set(agent.jsonlFile, id));
+  store.on('broadcast', (message) => {
+    if (message.type === 'officeEffect' && message.effect === 'confetti')
+      log.push(`confetti:${String(message.agentId)}`);
+  });
+  store.on('agentRemoved', (id) => log.push(`removed:${id}`));
+  return { bridge, agentIds, log };
+}
 
 class RecordingSink implements SourceSink {
   upserts: TrackedAgent[] = [];
@@ -328,5 +362,51 @@ describe('OmpSource', () => {
     setMtime(sessionFile, NOW - 10_000);
     src.poll();
     expect(sink.removed).toContain(sessionFile);
+  });
+
+  it('applies a primed subagent yield batch live before dropping it on session exit', () => {
+    const childFile = path.join(sessionFile.slice(0, -'.jsonl'.length), 'Scout.jsonl');
+    const { bridge, agentIds, log } = recordingBridge(() => now);
+    src = new OmpSource({ root, roomActivityDays: 7, sink: bridge, now: () => now });
+    src.discover();
+    src.poll();
+    const childId = agentIds.get(childFile);
+    expect(childId).toBeDefined();
+
+    fs.appendFileSync(childFile, `${yieldExit.join('\n')}\n`);
+    setMtime(childFile, NOW - 10_000);
+    src.poll();
+
+    expect(log).toEqual([`confetti:${childId}`, `removed:${childId}`]);
+  });
+
+  it('does not emit confetti when the first subagent batch replays through session exit', () => {
+    const childFile = path.join(sessionFile.slice(0, -'.jsonl'.length), 'Scout.jsonl');
+    fs.writeFileSync(childFile, `${header('c1', 'G:\\Home-AI')}\n${yieldExit.join('\n')}\n`);
+    setMtime(childFile, NOW - 10_000);
+    const { bridge, log } = recordingBridge(() => now);
+    src = new OmpSource({ root, roomActivityDays: 7, sink: bridge, now: () => now });
+
+    src.discover();
+    src.poll();
+
+    expect(log).toEqual([]);
+  });
+
+  it('applies a primed root stop batch live before dropping it on session exit', () => {
+    fs.writeFileSync(sessionFile, `${header('s1', 'G:\\Home-AI')}\n`);
+    setMtime(sessionFile, NOW - 60_000);
+    const { bridge, agentIds, log } = recordingBridge(() => now);
+    src = new OmpSource({ root, roomActivityDays: 7, sink: bridge, now: () => now });
+    src.discover();
+    src.poll();
+    const rootId = agentIds.get(sessionFile);
+    expect(rootId).toBeDefined();
+
+    fs.appendFileSync(sessionFile, `${[...threeTools, stopLine, exitLine].join('\n')}\n`);
+    setMtime(sessionFile, NOW - 10_000);
+    src.poll();
+
+    expect(log).toEqual([`confetti:${rootId}`, `removed:${rootId}`]);
   });
 });

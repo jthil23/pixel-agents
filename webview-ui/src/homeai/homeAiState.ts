@@ -53,6 +53,9 @@ export interface ActiveEffect {
   groupName?: string;
   severity?: string;
   reason?: string;
+  /** Last rendered character-head position, retained after the character despawns. */
+  x?: number;
+  y?: number;
   startedAt: number;
   until: number;
 }

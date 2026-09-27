@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 
 import { test } from 'vitest';
 
+import { confettiParticles } from '../src/homeai/geometry.js';
 import { createHomeAiState } from '../src/homeai/homeAiState.js';
 import { BEACON_OFF } from '../src/homeai/pixelArt.js';
 import { renderHomeAiLayer } from '../src/homeai/renderHomeAi.js';
@@ -146,6 +147,52 @@ test('expired effects and cron-fire timestamps are not rendered before pruning',
     now: 86_400_000,
   });
   assert.equal(fillRectCalls, 0);
+});
+
+test('confetti continues at the last rendered position after its agent disappears', () => {
+  const particles: [number, number][] = [];
+  const ctx = {
+    imageSmoothingEnabled: true,
+    save() {},
+    restore() {},
+    fillRect(x: number, y: number) {
+      particles.push([x, y]);
+    },
+  } as unknown as CanvasRenderingContext2D;
+  const state = createHomeAiState();
+  state.active = true;
+  state.effects.push({ kind: 'confetti', agentId: 7, startedAt: 100, until: 2600 });
+  const layout = {
+    cols: 4,
+    rows: 4,
+    areaTiles: Array(16).fill(''),
+    furniture: [],
+  } as unknown as OfficeLayout;
+  const render = (characters: Character[], now: number) =>
+    renderHomeAiLayer({
+      ctx,
+      state,
+      layout,
+      characters,
+      offsetX: 0,
+      offsetY: 0,
+      zoom: 1,
+      width: 64,
+      height: 64,
+      now,
+    });
+
+  render([{ id: 7, x: 12, y: 50 } as unknown as Character], 100);
+  particles.length = 0;
+  render([], 600);
+
+  const expected = confettiParticles(12, 20, 500, 100)[0];
+  assert.deepEqual(particles[0], [expected.x, expected.y]);
+  assert.ok(particles.length > 0);
+
+  particles.length = 0;
+  render([], 2600);
+  assert.equal(particles.length, 0);
 });
 
 test('a grouped alarm stops turning its cabinet red at exact expiry before pruning', () => {
