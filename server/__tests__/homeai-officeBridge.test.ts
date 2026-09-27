@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { AgentStateStore } from '../src/agentStateStore.js';
 import { ALARM_COOLDOWN_MS, DOZE_AFTER_MS, OfficeBridge } from '../src/homeai/officeBridge.js';
+import { createRedactor, MASK } from '../src/homeai/redact.js';
 import type { SessionEvent, TrackedAgent } from '../src/homeai/types.js';
-
 const T = '2026-09-27T14:00:00.000Z';
 const session: TrackedAgent = {
   key: 'C:/s/a.jsonl',
@@ -259,6 +259,59 @@ describe('OfficeBridge', () => {
       false,
     );
     expect(effects()).toEqual([expect.objectContaining({ effect: 'advice', severity: 'concern' })]);
+  });
+
+  it('redacts transcript role and model details and defaults unknown advice severity', () => {
+    bridge = new OfficeBridge({ store, redact: createRedactor({}), now: () => now });
+    bridge.upsertAgent(session);
+    const id = ids()[0];
+    bridge.applyEvents(
+      session.key,
+      [
+        {
+          kind: 'init',
+          agent: 'sk-proj-ABCDEFGH12345678',
+          modelRole: 'sk-proj-ABCDEFGH12345678',
+          at: T,
+        },
+        {
+          kind: 'usage',
+          model: 'sk-proj-ABCDEFGH12345678',
+          costUsd: 0,
+          totalTokens: 1,
+          contextTokens: 1,
+          at: T,
+        },
+      ],
+      false,
+    );
+    expect(bridge.detail(id)).toEqual(
+      expect.objectContaining({ role: `${MASK} (${MASK})`, model: MASK }),
+    );
+
+    const advisor: TrackedAgent = {
+      key: 'C:/s/a/__advisor.jsonl',
+      source: 'omp',
+      role: 'advisor',
+      parentKey: session.key,
+      name: 'Advisor',
+      folderName: 'Home-AI',
+    };
+    bridge.upsertAgent(advisor);
+    bridge.applyEvents(
+      advisor.key,
+      [
+        {
+          kind: 'toolStart',
+          toolId: 'secret-severity',
+          toolName: 'advise',
+          input: { severity: 'sk-proj-ABCDEFGH12345678' },
+          at: T,
+        },
+      ],
+      false,
+    );
+    expect(effects()).toContainEqual(expect.objectContaining({ effect: 'advice', severity: 'nit' }));
   });
 
   it('reports detail and root session id, snapshots teams for new clients, and removes agents', () => {

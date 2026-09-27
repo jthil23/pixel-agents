@@ -71,6 +71,7 @@ export class StatsAggregator {
       openclawRoot: string;
       openclawAgents: string[];
       now: () => number;
+      redact?: (s: string) => string;
     },
   ) {}
 
@@ -93,7 +94,8 @@ export class StatsAggregator {
         const dailyAgent = this.dailyAgents.get(file);
         if (dailyAgent) {
           dailyAgent.toolCalls -= st.contribution.toolCalls;
-          dailyAgent.name = path.basename(file, '.jsonl');
+          dailyAgent.name =
+            this.o.redact?.(path.basename(file, '.jsonl')) ?? path.basename(file, '.jsonl');
         }
         st.tail = new JsonlTail(file);
         st.parser = createSessionParser();
@@ -202,7 +204,7 @@ export class StatsAggregator {
             cronFailed: 0,
           },
         });
-        this.dailyAgents.set(full, { name, toolCalls: 0 });
+        this.dailyAgents.set(full, { name: this.o.redact?.(name) ?? name, toolCalls: 0 });
       }
     };
     walk(this.o.ompRoot, 0, 'omp');
@@ -215,7 +217,7 @@ export class StatsAggregator {
       if (ev.kind === 'title' && st.source === 'omp' && st.isRoot && !st.isAdvisor) {
         st.name = ev.title;
         const dailyAgent = this.dailyAgents.get(file);
-        if (dailyAgent) dailyAgent.name = ev.title;
+        if (dailyAgent) dailyAgent.name = this.o.redact?.(ev.title) ?? ev.title;
       }
       if (ev.kind !== 'title' && (Date.parse(ev.at) || 0) < midnight) continue;
       if (ev.kind === 'toolStart') {

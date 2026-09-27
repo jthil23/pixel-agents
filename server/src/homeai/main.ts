@@ -94,7 +94,8 @@ export async function runHomeAi(distRoot: string, argv: string[]): Promise<void>
 
   const store = new AgentStateStore();
   store.setAdapter(new FileStateAdapter({ namespace: 'standalone' }));
-  const bridge = new OfficeBridge({ store, redact: createRedactor(), now });
+  const redact = createRedactor();
+  const bridge = new OfficeBridge({ store, redact, now });
   const omp = new OmpSource({
     root: ompRoot,
     roomActivityDays: cfg.omp.roomActivityDays,
@@ -119,6 +120,7 @@ export async function runHomeAi(distRoot: string, argv: string[]): Promise<void>
     openclawRoot,
     openclawAgents: cfg.openclaw.agents,
     now,
+    redact,
   });
   const rooms = new RoomAssigner({
     load: () => readConfig().standalone.areaMappings,

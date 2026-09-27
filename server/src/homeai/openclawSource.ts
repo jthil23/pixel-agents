@@ -30,6 +30,7 @@ interface Tail {
 
 export class OpenClawSource {
   private readonly tails = new Map<string, Tail>();
+  private readonly retired = new Map<string, Tail>();
   private startedAt = 0;
 
   constructor(
@@ -69,6 +70,12 @@ export class OpenClawSource {
           continue;
         }
         if (now - mtime > ACTIVE_WINDOW_MS) continue;
+        const retired = this.retired.get(file);
+        if (retired) {
+          this.retired.delete(file);
+          this.tails.set(file, retired);
+          continue;
+        }
         this.tails.set(file, {
           file,
           agentKey: openclawKey(agent),
@@ -90,6 +97,7 @@ export class OpenClawSource {
       const lines = t.tail.read();
       if (lines === null) {
         this.tails.delete(t.file);
+        this.retired.delete(t.file);
         continue;
       }
       const replay = !t.primed && t.historical;
@@ -103,7 +111,10 @@ export class OpenClawSource {
         this.o.sink.applyEvents(t.agentKey, events, replay);
       }
       t.primed = true;
-      if (now - t.lastDataAt > ACTIVE_WINDOW_MS) this.tails.delete(t.file);
+      if (now - t.lastDataAt > ACTIVE_WINDOW_MS) {
+        this.tails.delete(t.file);
+        this.retired.set(t.file, t);
+      }
     }
   }
 

@@ -103,8 +103,15 @@ p{color:#ff8a80;min-height:1em}</style></head>
 
 export function installHomeAiAuth(app: FastifyInstance, o: HomeAiAuthOptions): void {
   const failures = new Map<string, number[]>();
-  const recentFailures = (ip: string) =>
-    (failures.get(ip) ?? []).filter((t) => o.now() - t < LOGIN_WINDOW_MS);
+  const recentFailures = (ip: string) => {
+    const now = o.now();
+    for (const [address, times] of failures) {
+      const recent = times.filter((t) => now - t < LOGIN_WINDOW_MS);
+      if (recent.length === 0) failures.delete(address);
+      else failures.set(address, recent);
+    }
+    return failures.get(ip) ?? [];
+  };
 
   app.addContentTypeParser(
     'application/x-www-form-urlencoded',

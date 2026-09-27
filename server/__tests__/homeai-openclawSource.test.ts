@@ -143,4 +143,31 @@ describe('OpenClawSource', () => {
     src.poll();
     expect(sink.mail).toEqual([]);
   });
+
+  it('resumes a rediscovered idle trajectory after its last read, emitting only new runs', () => {
+    const file = path.join(dir, 'r1.trajectory.jsonl');
+    fs.writeFileSync(
+      file,
+      `${traj('session.started', 'agent:main:cron:j', { trigger: 'cron' })}\n${traj('session.ended', 'agent:main:cron:j', { status: 'success' })}\n`,
+    );
+    fs.utimesSync(file, (NOW - 59 * 60_000) / 1000, (NOW - 59 * 60_000) / 1000);
+    src.start();
+    src.discover();
+    src.poll();
+    expect(sink.mail).toEqual([]);
+
+    now = NOW + 2 * 60_000;
+    src.poll();
+    fs.appendFileSync(
+      file,
+      `${traj('session.started', 'agent:main:hook:h', {})}\n${traj('session.ended', 'agent:main:hook:h', { status: 'success' })}\n`,
+    );
+    fs.utimesSync(file, now / 1000, now / 1000);
+    src.discover();
+    src.poll();
+    expect(sink.mail).toEqual([
+      [openclawKey('main'), 'phone', 'start', false],
+      [openclawKey('main'), 'phone', 'end', false],
+    ]);
+  });
 });

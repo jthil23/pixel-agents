@@ -73,6 +73,23 @@ export class OmpSource {
   discover(): RoomActivity[] {
     const now = this.o.now();
     const rooms = new Map<string, number>();
+    for (const file of this.headerCwd.keys()) {
+      try {
+        fs.statSync(file);
+      } catch {
+        this.headerCwd.delete(file);
+      }
+    }
+    for (const [file, retiredAt] of this.retired) {
+      try {
+        fs.statSync(file);
+      } catch {
+        this.retired.delete(file);
+        this.headerCwd.delete(file);
+        continue;
+      }
+      if (now - retiredAt > this.o.roomActivityDays * DAY_MS) this.retired.delete(file);
+    }
     for (const projectDir of dirents(this.o.root).filter((d) => d.isDirectory())) {
       const dir = path.join(this.o.root, projectDir.name);
       for (const f of dirents(dir).filter((d) => d.isFile() && d.name.endsWith('.jsonl'))) {

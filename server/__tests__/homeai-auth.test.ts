@@ -2,7 +2,7 @@
 import * as http from 'node:http';
 import * as net from 'node:net';
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { WebSocket } from 'ws';
 
 import { AgentStateStore } from '../src/agentStateStore.js';
@@ -233,6 +233,22 @@ describe('home-ai auth on the real server', () => {
         })
       ).status,
     ).toBe(429);
+    const expiredAt = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(expiredAt + 10 * 60_000 + 1);
+    try {
+      expect(
+        (
+          await request(port, {
+            method: 'POST',
+            path: '/login',
+            headers: { ...form, Origin: origin },
+            body: 'passcode=letmein',
+          })
+        ).status,
+      ).toBe(302);
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   it('gates WebSocket upgrades on cookie, Host and Origin', async () => {

@@ -131,6 +131,27 @@ describe('OmpSource', () => {
     src.poll();
     expect(sink.upserts.filter((u) => u.key === sessionFile)).toHaveLength(1);
   });
+
+  it('forgets deleted retired files and their cached cwd before tracking a recreated path', () => {
+    src.discover();
+    src.poll();
+    fs.appendFileSync(
+      sessionFile,
+      `${JSON.stringify({ type: 'custom', customType: 'session_exit', data: {}, timestamp: 'x' })}\n`,
+    );
+    setMtime(sessionFile, NOW - 30_000);
+    src.poll();
+    fs.unlinkSync(sessionFile);
+    src.discover();
+
+    fs.writeFileSync(sessionFile, `${header('replacement', 'G:\\RecreatedFolder')}\n`);
+    setMtime(sessionFile, NOW - 30_000);
+    src.discover();
+    src.poll();
+    expect(sink.upserts.filter((agent) => agent.key === sessionFile).at(-1)?.folderName).toBe(
+      'RecreatedFolder',
+    );
+  });
   it('walks idle agents out after the active window', () => {
     src.discover();
     src.poll();

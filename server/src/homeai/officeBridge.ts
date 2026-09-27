@@ -337,11 +337,13 @@ export class OfficeBridge implements SourceSink {
         info.title = this.deps.redact(ev.title);
         return;
       case 'init':
-        info.roleLabel = ev.modelRole ? `${ev.agent} (${ev.modelRole})` : ev.agent;
-        if (!info.model && ev.resolvedModel) info.model = ev.resolvedModel;
+        info.roleLabel = this.deps.redact(
+          ev.modelRole ? `${ev.agent} (${ev.modelRole})` : ev.agent,
+        );
+        if (!info.model && ev.resolvedModel) info.model = this.deps.redact(ev.resolvedModel);
         return;
       case 'usage':
-        info.model = ev.model;
+        info.model = this.deps.redact(ev.model);
         info.costUsd += ev.costUsd;
         info.contextTokens = ev.contextTokens;
         if (!info.turnEnded) {
@@ -394,7 +396,12 @@ export class OfficeBridge implements SourceSink {
           this.effect({
             effect: 'advice',
             agentId: id,
-            severity: typeof ev.input.severity === 'string' ? ev.input.severity : 'nit',
+            severity:
+              ev.input.severity === 'nit' ||
+              ev.input.severity === 'concern' ||
+              ev.input.severity === 'blocker'
+                ? ev.input.severity
+                : 'nit',
           });
         }
         return;

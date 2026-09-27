@@ -4,6 +4,7 @@ import * as path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+import { createRedactor, MASK } from '../src/homeai/redact.js';
 import { localDate, StatsAggregator } from '../src/homeai/statsAggregator.js';
 
 const NOW = new Date(2026, 8, 27, 15, 0, 0).getTime();
@@ -28,7 +29,7 @@ describe('StatsAggregator', () => {
         type: 'session',
         id: 's',
         cwd: 'G:\\Home-AI',
-        title: 'Busy one',
+        title: 'Busy sk-proj-ABCDEFGH12345678',
         timestamp: TODAY,
       }),
       msg(YESTERDAY, {
@@ -74,13 +75,14 @@ describe('StatsAggregator', () => {
       openclawRoot: path.join(home, 'oc'),
       openclawAgents: ['main'],
       now: () => NOW,
+      redact: createRedactor({}),
     });
     expect(agg.refresh(0.97)).toEqual({
       date: localDate(NOW),
       spendByModel: { opus: 1.5 },
       openclawTokens: 1000,
       toolCalls: 2,
-      busiestAgent: 'Busy one',
+      busiestAgent: `Busy ${MASK}`,
       cronOk: 0,
       cronFailed: 1,
       solUptime24h: 0.97,
