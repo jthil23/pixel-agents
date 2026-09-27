@@ -30,7 +30,7 @@ interface Tail {
 
 export class OpenClawSource {
   private readonly tails = new Map<string, Tail>();
-  private readonly retired = new Map<string, Tail>();
+  private readonly retired = new Map<string, { tail: Tail; retiredAt: number }>();
   private startedAt = 0;
 
   constructor(
@@ -52,6 +52,11 @@ export class OpenClawSource {
 
   discover(): void {
     const now = this.o.now();
+    for (const [file, entry] of this.retired) {
+      if (now - entry.retiredAt > 7 * 86_400_000 || !fs.existsSync(file)) {
+        this.retired.delete(file);
+      }
+    }
     for (const agent of this.o.agents) {
       const dir = path.join(this.o.root, agent, 'sessions');
       let names: string[];
@@ -70,11 +75,19 @@ export class OpenClawSource {
           continue;
         }
         if (now - mtime > ACTIVE_WINDOW_MS) continue;
-        const retired = this.retired.get(file);
-        if (retired) {
+        const entry = this.retired.get(file);
+        if (entry) {
           this.retired.delete(file);
-          this.tails.set(file, retired);
-          continue;
+          let size: number;
+          try {
+            size = fs.statSync(file).size;
+          } catch {
+            continue;
+          }
+          if (size >= entry.tail.tail.readOffset) {
+            this.tails.set(file, entry.tail);
+            continue;
+          }
         }
         this.tails.set(file, {
           file,
@@ -113,7 +126,7 @@ export class OpenClawSource {
       t.primed = true;
       if (now - t.lastDataAt > ACTIVE_WINDOW_MS) {
         this.tails.delete(t.file);
-        this.retired.set(t.file, t);
+        this.retired.set(t.file, { tail: t, retiredAt: now });
       }
     }
   }

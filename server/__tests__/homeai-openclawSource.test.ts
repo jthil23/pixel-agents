@@ -170,4 +170,84 @@ describe('OpenClawSource', () => {
       [openclawKey('main'), 'phone', 'end', false],
     ]);
   });
+
+  it('forgets retired entries when a file is deleted and recreated at the same path', () => {
+    const file = path.join(dir, 'r1.trajectory.jsonl');
+    const oldRecords = `${traj('session.started', 'agent:main:cron:j', { trigger: 'cron' })}\n${traj('session.ended', 'agent:main:cron:j', { status: 'success' })}\n`;
+    fs.writeFileSync(file, oldRecords);
+    fs.utimesSync(file, (NOW - 59 * 60_000) / 1000, (NOW - 59 * 60_000) / 1000);
+    src.start();
+    src.discover();
+    src.poll();
+    now = NOW + 2 * 60_000;
+    src.poll();
+    fs.unlinkSync(file);
+    src.discover();
+    src.poll();
+    const newRecords = `${traj('session.started', 'agent:main:hook:h', {})}\n${traj('session.ended', 'agent:main:hook:h', { status: 'success' })}\n`;
+    fs.writeFileSync(file, newRecords);
+    fs.utimesSync(file, now / 1000, now / 1000);
+    src.discover();
+    src.poll();
+    expect(sink.mail).toEqual([
+      [openclawKey('main'), 'phone', 'start', false],
+      [openclawKey('main'), 'phone', 'end', false],
+    ]);
+  });
+
+  it('does not restore a retired tail older than seven days', () => {
+    const file = path.join(dir, 'r1.trajectory.jsonl');
+    fs.writeFileSync(
+      file,
+      `${traj('session.started', 'agent:main:cron:j', { trigger: 'cron' })}\n${traj('session.ended', 'agent:main:cron:j', { status: 'success' })}\n`,
+    );
+    fs.utimesSync(file, (NOW - 59 * 60_000) / 1000, (NOW - 59 * 60_000) / 1000);
+    src.start();
+    src.discover();
+    src.poll();
+    now = NOW + 2 * 60_000;
+    src.poll();
+    now += 7 * 86_400_000 + 1;
+    src.discover();
+    fs.appendFileSync(
+      file,
+      `${traj('session.started', 'agent:main:hook:h', {})}\n${traj('session.ended', 'agent:main:hook:h', { status: 'success' })}\n`,
+    );
+    fs.utimesSync(file, now / 1000, now / 1000);
+    src.discover();
+    src.poll();
+    // Expired state is treated as a new file: its full current contents are live,
+    // so the old cron run is emitted once alongside the appended hook run.
+    expect(sink.mail).toEqual([
+      [openclawKey('main'), 'clock', 'start', false],
+      [openclawKey('main'), 'clock', 'end', false],
+      [openclawKey('main'), 'phone', 'start', false],
+      [openclawKey('main'), 'phone', 'end', false],
+    ]);
+  });
+
+  it('starts fresh when a retired file shrinks below its remembered offset', () => {
+    const file = path.join(dir, 'r1.trajectory.jsonl');
+    fs.writeFileSync(
+      file,
+      `${traj('session.started', 'agent:main:cron:j', { trigger: 'cron' })}\n${traj('session.ended', 'agent:main:cron:j', { status: 'success' })}\n`,
+    );
+    fs.utimesSync(file, (NOW - 59 * 60_000) / 1000, (NOW - 59 * 60_000) / 1000);
+    src.start();
+    src.discover();
+    src.poll();
+    now = NOW + 2 * 60_000;
+    src.poll();
+    fs.writeFileSync(
+      file,
+      `${traj('session.started', 'agent:main:hook:h', {})}\n${traj('session.ended', 'agent:main:hook:h', { status: 'success' })}\n`,
+    );
+    fs.utimesSync(file, now / 1000, now / 1000);
+    src.discover();
+    src.poll();
+    expect(sink.mail).toEqual([
+      [openclawKey('main'), 'phone', 'start', false],
+      [openclawKey('main'), 'phone', 'end', false],
+    ]);
+  });
 });

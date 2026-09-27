@@ -7,6 +7,9 @@ export class JsonlTail {
   private pending: Buffer = Buffer.alloc(0);
 
   constructor(readonly file: string) {}
+  get readOffset(): number {
+    return this.offset;
+  }
 
   /** Complete new lines since the last call; `null` once the file no longer exists. */
   read(): string[] | null {
