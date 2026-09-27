@@ -4,7 +4,7 @@ import * as path from 'node:path';
 
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { classifyRun, openclawKey,OpenClawSource } from '../src/homeai/openclawSource.js';
+import { classifyRun, openclawKey, OpenClawSource } from '../src/homeai/openclawSource.js';
 import type { MailroomKind, SessionEvent, SourceSink, TrackedAgent } from '../src/homeai/types.js';
 
 const NOW = Date.parse('2026-09-27T15:00:00Z');
@@ -41,8 +41,9 @@ describe('OpenClawSource', () => {
   let dir: string;
   let sink: Sink;
   let src: OpenClawSource;
-
+  let now: number;
   beforeEach(() => {
+    now = NOW;
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'homeai-oc-'));
     dir = path.join(root, 'main', 'sessions');
     fs.mkdirSync(dir, { recursive: true });
@@ -56,7 +57,12 @@ describe('OpenClawSource', () => {
     );
     for (const f of fs.readdirSync(dir)) touch(path.join(dir, f));
     sink = new Sink();
-    src = new OpenClawSource({ root, agents: ['main'], sink, now: () => NOW });
+    src = new OpenClawSource({
+      root: path.dirname(path.dirname(dir)),
+      agents: ['main'],
+      sink,
+      now: () => now,
+    });
   });
 
   it('seats one persistent character per configured agent in the OpenClaw folder', () => {
@@ -94,5 +100,47 @@ describe('OpenClawSource', () => {
     fs.appendFileSync(r2, `${traj('session.started', 'agent:main:hook:h', { trigger: 'cron' })}\n`);
     src.poll();
     expect(sink.mail.at(-1)).toEqual([openclawKey('main'), 'phone', 'start', false]);
+  });
+
+  it('emits events from trajectory files created after startup', () => {
+    src.start();
+    const live = path.join(dir, 'live.trajectory.jsonl');
+    fs.writeFileSync(
+      live,
+      `${traj('session.started', 'agent:main:cron:j', { trigger: 'cron' })}\n${traj('session.ended', 'agent:main:cron:j', { status: 'error' })}\n`,
+    );
+    fs.utimesSync(live, (NOW + 1000) / 1000, (NOW + 1000) / 1000);
+
+    const liveSession = path.join(dir, 'live.jsonl');
+    fs.writeFileSync(
+      liveSession,
+      `${JSON.stringify({ type: 'session', id: 'live', cwd: 'C:\\\\ws', timestamp: 't' })}\n`,
+    );
+    fs.utimesSync(liveSession, (NOW + 1000) / 1000, (NOW + 1000) / 1000);
+    src.discover();
+    src.poll();
+    expect(sink.applied).toContainEqual({ key: openclawKey('main'), kinds: [], replay: false });
+
+    expect(sink.mail).toEqual([
+      [openclawKey('main'), 'clock', 'start', false],
+      [openclawKey('main'), 'clock', 'end', true],
+    ]);
+  });
+
+  it('does not extend a historical tail lifetime by replaying its existing lines', () => {
+    const historical = path.join(dir, 'r1.trajectory.jsonl');
+    fs.utimesSync(historical, (NOW - 59 * 60_000) / 1000, (NOW - 59 * 60_000) / 1000);
+    src.start();
+    src.discover();
+    src.poll();
+
+    now = NOW + 2 * 60_000;
+    src.poll();
+    fs.appendFileSync(
+      historical,
+      `${traj('session.started', 'agent:main:cron:j', { trigger: 'cron' })}\n`,
+    );
+    src.poll();
+    expect(sink.mail).toEqual([]);
   });
 });

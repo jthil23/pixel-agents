@@ -22,19 +22,21 @@ interface Tail {
   trajectory: boolean;
   tail: JsonlTail;
   parser: SessionParser;
-  kind: MailroomKind | undefined;
+  historical: boolean;
   primed: boolean;
   lastDataAt: number;
 }
 
 export class OpenClawSource {
   private readonly tails = new Map<string, Tail>();
+  private startedAt = 0;
 
   constructor(
     private readonly o: { root: string; agents: string[]; sink: SourceSink; now: () => number },
   ) {}
 
   start(): void {
+    this.startedAt = this.o.now();
     for (const agent of this.o.agents) {
       this.o.sink.upsertAgent({
         key: openclawKey(agent),
@@ -73,6 +75,7 @@ export class OpenClawSource {
           tail: new JsonlTail(file),
           parser: createSessionParser(),
           kind: undefined,
+          historical: mtime < this.startedAt,
           primed: false,
           lastDataAt: mtime,
         });
@@ -88,9 +91,8 @@ export class OpenClawSource {
         this.tails.delete(t.file);
         continue;
       }
-      const replay = !t.primed;
-      t.primed = true;
-      if (lines.length > 0) t.lastDataAt = now;
+      const replay = !t.primed && t.historical;
+      if (lines.length > 0 && t.primed) t.lastDataAt = now;
       if (t.trajectory) {
         this.applyTrajectory(t, lines, replay);
       } else if (lines.length > 0 || replay) {
@@ -99,6 +101,7 @@ export class OpenClawSource {
           .filter((e) => e.kind !== 'header' && e.kind !== 'title' && e.kind !== 'sessionExit');
         this.o.sink.applyEvents(t.agentKey, events, replay);
       }
+      t.primed = true;
       if (now - t.lastDataAt > ACTIVE_WINDOW_MS) this.tails.delete(t.file);
     }
   }
