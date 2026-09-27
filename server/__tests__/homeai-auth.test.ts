@@ -37,6 +37,9 @@ describe('auth primitives', () => {
     expect(verifyCookie(`${c}x`, SECRET, NOW)).toBe(false);
     expect(verifyCookie(c, 'e'.repeat(64), NOW)).toBe(false);
     expect(readCookie(`a=1; ${COOKIE_NAME}=${c}; b=2`, COOKIE_NAME)).toBe(c);
+    const validExpiry = issueCookie(SECRET, NOW).split('.')[0];
+    expect(verifyCookie(`${validExpiry}.${'a'.repeat(42)}é`, SECRET, NOW)).toBe(false);
+    expect(verifyCookie(`${issueCookie(SECRET, NOW)}.extra`, SECRET, NOW)).toBe(false);
   });
 
   it('builds the host allowlist and checks origins strictly', () => {
@@ -140,6 +143,45 @@ describe('home-ai auth on the real server', () => {
     expect((await request(port, { path: '/api/health', headers: { Host: host } })).status).toBe(
       200,
     );
+    expect(
+      (await request(port, { method: 'HEAD', path: '/api/health', headers: { Host: host } }))
+        .status,
+    ).toBe(200);
+    expect(
+      (
+        await request(port, {
+          method: 'POST',
+          path: '/api/health',
+          headers: { Host: host, Origin: origin },
+        })
+      ).status,
+    ).toBe(401);
+    expect(
+      (
+        await request(port, {
+          method: 'PUT',
+          path: '/login',
+          headers: { Host: host, Origin: origin },
+        })
+      ).status,
+    ).toBe(401);
+    const validExpiry = issueCookie(SECRET, Date.now()).split('.')[0];
+    expect(
+      (
+        await request(port, {
+          path: '/api/x',
+          headers: { Host: host, Cookie: `${COOKIE_NAME}=${validExpiry}.${'a'.repeat(42)}é` },
+        })
+      ).status,
+    ).toBe(401);
+    expect(
+      (
+        await request(port, {
+          path: '/api/x',
+          headers: { Host: host, Cookie: `${cookie()}.extra` },
+        })
+      ).status,
+    ).toBe(401);
     const page = await request(port, { headers: { Host: host, Accept: 'text/html' } });
     expect(page.status).toBe(302);
     expect(page.headers.location).toBe('/login');

@@ -73,14 +73,13 @@ export function issueCookie(secret: string, now: number): string {
 }
 
 export function verifyCookie(value: string | undefined, secret: string, now: number): boolean {
-  if (!value) return false;
-  const [exp, mac] = value.split('.');
-  if (!exp || !mac || !(Number(exp) > now)) return false;
-  const expected = hmac(secret, exp);
-  return (
-    mac.length === expected.length &&
-    crypto.timingSafeEqual(Buffer.from(mac), Buffer.from(expected))
-  );
+  const match = /^(\d{13,})\.([A-Za-z0-9_-]{43})$/.exec(value ?? '');
+  if (!match) return false;
+  const [, exp, mac] = match;
+  if (!(Number(exp) > now)) return false;
+  const actual = Buffer.from(mac, 'base64url');
+  const expected = Buffer.from(hmac(secret, exp), 'base64url');
+  return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
 }
 
 export function readCookie(header: string | undefined, name: string): string | undefined {
@@ -119,13 +118,15 @@ export function installHomeAiAuth(app: FastifyInstance, o: HomeAiAuthOptions): v
     if (!hostAllowed(req.headers.host, o.allowed))
       return reply.code(421).type('text/plain').send('misdirected request');
     const path = req.url.split('?')[0];
-    if (path === '/api/health') return;
+    const isPublicRoute =
+      (path === '/api/health' && (req.method === 'GET' || req.method === 'HEAD')) ||
+      (path === '/login' && (req.method === 'GET' || req.method === 'POST'));
     const safeMethod = req.method === 'GET' || req.method === 'HEAD';
     const isUpgrade = (req.headers.upgrade ?? '').toLowerCase() === 'websocket';
     if ((isUpgrade || !safeMethod) && !originAllowed(req.headers.origin, o.allowed)) {
       return reply.code(403).type('text/plain').send('forbidden origin');
     }
-    if (path === '/login') return;
+    if (isPublicRoute) return;
     if (verifyCookie(readCookie(req.headers.cookie, COOKIE_NAME), o.cookieSecret, o.now())) return;
     if (!isUpgrade && req.method === 'GET' && (req.headers.accept ?? '').includes('text/html'))
       return reply.redirect('/login');
