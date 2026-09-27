@@ -94,6 +94,53 @@ describe('OfficeBridge', () => {
     expect(effects()).toEqual([expect.objectContaining({ effect: 'confetti' })]);
   });
 
+  describe('subagent yield confetti', () => {
+    const threeTools = [start('a'), end('a'), start('b'), end('b'), start('c'), end('c')];
+    const yieldOk = [start('y', 'yield'), end('y', false, 'yield')];
+
+    it('fires exactly one confetti for a successful yield after >= 3 other tools', () => {
+      bridge.upsertAgent(session);
+      bridge.upsertAgent(scout);
+      const childId = ids()[1];
+      bridge.applyEvents(scout.key, [...threeTools, ...yieldOk], false);
+      expect(effects()).toEqual([{ type: 'officeEffect', effect: 'confetti', agentId: childId }]);
+    });
+
+    it('does not count the yield itself toward the threshold', () => {
+      bridge.upsertAgent(scout);
+      bridge.applyEvents(
+        scout.key,
+        [start('a'), end('a'), start('b'), end('b'), ...yieldOk],
+        false,
+      );
+      expect(effects()).toEqual([]);
+    });
+
+    it('does not fire for an errored yield', () => {
+      bridge.upsertAgent(scout);
+      bridge.applyEvents(
+        scout.key,
+        [...threeTools, start('y', 'yield'), end('y', true, 'yield')],
+        false,
+      );
+      expect(effects().filter((e) => e.effect === 'confetti')).toEqual([]);
+    });
+
+    it('does not fire for a replayed yield, including a later stop in that same turn', () => {
+      bridge.upsertAgent(scout);
+      bridge.applyEvents(scout.key, [...threeTools, ...yieldOk], true);
+      expect(effects()).toEqual([]);
+      bridge.applyEvents(scout.key, [stop], false);
+      expect(effects()).toEqual([]);
+    });
+
+    it('does not fire a second confetti for a stop after the yield in the same turn', () => {
+      bridge.upsertAgent(scout);
+      bridge.applyEvents(scout.key, [...threeTools, ...yieldOk, stop], false);
+      expect(effects().filter((e) => e.effect === 'confetti')).toHaveLength(1);
+    });
+  });
+
   it('suppresses effects and live tool messages during replay, ending with one snapshot', () => {
     bridge.upsertAgent(session);
     const id = ids()[0];
@@ -311,7 +358,9 @@ describe('OfficeBridge', () => {
       ],
       false,
     );
-    expect(effects()).toContainEqual(expect.objectContaining({ effect: 'advice', severity: 'nit' }));
+    expect(effects()).toContainEqual(
+      expect.objectContaining({ effect: 'advice', severity: 'nit' }),
+    );
   });
 
   it('reports detail and root session id, snapshots teams for new clients, and removes agents', () => {

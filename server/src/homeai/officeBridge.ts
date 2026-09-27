@@ -417,6 +417,14 @@ export class OfficeBridge implements SourceSink {
         state?.activeToolIds.delete(ev.toolId);
         state?.activeToolStatuses.delete(ev.toolId);
         state?.activeToolNames.delete(ev.toolId);
+        if (ev.toolName === 'yield' && !ev.isError) {
+          const otherTools = info.turnTools - (rec?.toolName === 'yield' ? 1 : 0);
+          if (otherTools >= CONFETTI_MIN_TOOLS) {
+            // Advance replay state without letting a later stop animate this completed turn.
+            info.turnTools = 0;
+            if (live) this.effect({ effect: 'confetti', agentId: id });
+          }
+        }
         if (!live) return;
         store.broadcast({ type: 'agentToolDone', id, toolId: ev.toolId });
         store.broadcast({ type: 'agentStatus', id, ...this.effectiveStatus(info) });
