@@ -7,10 +7,12 @@ if (-not $identity.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrat
 }
 
 $config = Join-Path $env:USERPROFILE '.pixel-agents\home-ai.json'
-$passcodeSet = (Test-Path $config) -and [bool](Get-Content $config -Raw | ConvertFrom-Json).passcodeHash
+$configData = if (Test-Path $config) { Get-Content $config -Raw | ConvertFrom-Json } else { $null }
+$passcodeSet = [bool]$configData.passcodeHash
 if (-not $passcodeSet) {
   throw "No passcode in $config. Run 'node dist\cli.js set-passcode' from the repo root first, then rerun install.ps1."
 }
+$port = if ($null -ne $configData.listen -and $null -ne $configData.listen.port) { [int]$configData.listen.port } else { 3100 }
 
 $root = Resolve-Path (Join-Path $PSScriptRoot '..\..')
 $node = (Get-Command node -ErrorAction Stop).Source
@@ -30,9 +32,16 @@ $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" 
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
 Register-ScheduledTask -TaskName 'Pixel Office' -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Description 'Pixel Office (home-ai) LAN dashboard' -Force | Out-Null
 
-# Firewall: LAN (Private profile) only.
-if (-not (Get-NetFirewallRule -DisplayName 'Pixel Office (Private)' -ErrorAction SilentlyContinue)) {
-  New-NetFirewallRule -DisplayName 'Pixel Office (Private)' -Direction Inbound -Protocol TCP -LocalPort 3100 -Profile Private -Action Allow | Out-Null
+# Firewall: LAN (Private profile) only; keep it aligned with listen.port.
+$firewallRule = Get-NetFirewallRule -DisplayName 'Pixel Office (Private)' -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($null -eq $firewallRule) {
+  New-NetFirewallRule -DisplayName 'Pixel Office (Private)' -Direction Inbound -Protocol TCP -LocalPort $port -Profile Private -Action Allow | Out-Null
+} else {
+  $portFilter = Get-NetFirewallPortFilter -AssociatedNetFirewallRule $firewallRule
+  if (@($portFilter.LocalPort) -notcontains "$port") {
+    Set-NetFirewallPortFilter -InputObject $portFilter -LocalPort $port | Out-Null
+  }
 }
+Write-Host 'Pixel Office firewall allows TCP port' $port 'on the Private profile.'
 Start-ScheduledTask -TaskName 'Pixel Office'
 Write-Host 'Pixel Office installed. Log:' (Join-Path $state 'pixel-office.log')
