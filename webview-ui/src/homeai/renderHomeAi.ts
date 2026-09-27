@@ -33,11 +33,11 @@ export interface HomeAiRenderArgs {
   now: number;
 }
 
-const FONT = (px: number) => `${Math.max(6, Math.round(px))}px 'FS Pixel Sans', monospace`;
+const FONT = (px: number) => `${Math.round(px)}px 'FS Pixel Sans', monospace`;
 const HEAD_OFFSET = 30;
 /* eslint-disable pixel-agents/no-inline-colors -- Canvas layer colors are the documented Home-AI overlay palette. */
 const OVERLAY_PALETTE = {
-  advice: { nit: '#40c4ff', concern: '#ffb300', blocker: '#ff3b30' },
+  advice: { nit: '#40c4ff', concern: '#ffb300', blocker: '#ff3b30' } as Record<string, string>,
   sleep: '#e0e0ff',
   text: '#111',
   signBackground: '21,16,32',
@@ -71,8 +71,9 @@ export function renderHomeAiLayer(a: HomeAiRenderArgs): CabinetBox[] {
       ctx,
       px(((b.minCol + b.maxCol + 1) / 2) * TILE_SIZE),
       py(b.minRow * TILE_SIZE + 2),
-      name.length > 16 ? `${name.slice(0, 15)}…` : name,
+      name,
       zoom,
+      (b.maxCol - b.minCol + 1) * TILE_SIZE * zoom - 6 * zoom,
     );
   }
 
@@ -105,6 +106,7 @@ export function renderHomeAiLayer(a: HomeAiRenderArgs): CabinetBox[] {
         py(server.maxRow * TILE_SIZE - 4),
         'NO SIGNAL',
         zoom,
+        (server.maxCol - server.minCol + 1) * TILE_SIZE * zoom - 6 * zoom,
         0.6,
       );
   }
@@ -203,18 +205,29 @@ function drawSign(
   y: number,
   text: string,
   zoom: number,
+  maxTextWidth: number,
   alpha = 0.85,
 ): void {
   ctx.font = FONT(6 * zoom);
-  const w = ctx.measureText(text).width + 6 * zoom;
+  const label = fitText(ctx, text, maxTextWidth);
+  const w = ctx.measureText(label).width + 6 * zoom;
   ctx.fillStyle = `rgba(${OVERLAY_PALETTE.signBackground},${alpha})`;
   ctx.fillRect(cx - w / 2, y, w, 9 * zoom);
   ctx.fillStyle = OVERLAY_PALETTE.signText;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
-  ctx.fillText(text, cx, y + 1.5 * zoom);
+  ctx.fillText(label, cx, y + 1.5 * zoom);
   ctx.textAlign = 'start';
   ctx.textBaseline = 'alphabetic';
+}
+
+function fitText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
+  if (ctx.measureText(text).width <= maxWidth) return text;
+  let prefix = text;
+  while (prefix.length > 0 && ctx.measureText(`${prefix}…`).width > maxWidth) {
+    prefix = prefix.slice(0, -1);
+  }
+  return ctx.measureText(`${prefix}…`).width <= maxWidth ? `${prefix}…` : '';
 }
 
 function drawBoard(
@@ -234,7 +247,9 @@ function drawBoard(
   ctx.fillStyle = OVERLAY_PALETTE.ink;
   ctx.font = FONT(5 * zoom);
   ctx.textBaseline = 'top';
-  lines.forEach((line, i) => ctx.fillText(line, x + 2 * zoom, y + (2 + i * 6) * zoom));
+  lines.forEach((line, i) =>
+    ctx.fillText(fitText(ctx, line, 68 * zoom), x + 2 * zoom, y + (2 + i * 6) * zoom),
+  );
   ctx.textBaseline = 'alphabetic';
 }
 
@@ -279,7 +294,7 @@ function drawCabinet(
   ctx.font = FONT(4 * zoom);
   ctx.textAlign = 'center';
   ctx.fillText(
-    (group?.name ?? '').split(' ')[0].slice(0, 6),
+    fitText(ctx, (group?.name ?? '').split(' ')[0].slice(0, 6), box.w * zoom),
     px(box.x + box.w / 2),
     py(box.y + box.h + 6),
   );

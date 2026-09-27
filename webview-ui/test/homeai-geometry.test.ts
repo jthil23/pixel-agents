@@ -1,4 +1,4 @@
-/* eslint-disable pixel-agents/no-inline-colors -- These assertions pin the required LED palette values. */
+/* eslint-disable pixel-agents/no-inline-colors -- These assertions pin required LED palette values. */
 import assert from 'node:assert/strict';
 
 import { test } from 'vitest';
@@ -44,6 +44,28 @@ test('cabinets line up left to right inside the room and are hit-testable', () =
   assert.equal(hitCabinet(boxes, boxes[0].x - 1, boxes[0].y), null);
 });
 
+test('one to eight cabinets stay inside the room without overlap', () => {
+  const bounds = { minCol: 34, minRow: 2, maxCol: 43, maxRow: 10 };
+  const groups = Array.from({ length: 8 }, (_, i) => ({ name: `Group ${i}`, monitors: [] }));
+  for (let count = 1; count <= 8; count++) {
+    const boxes = cabinetBoxes(bounds, groups.slice(0, count));
+    assert.equal(boxes.length, count);
+    for (const box of boxes) {
+      assert.ok(box.x >= bounds.minCol * 16);
+      assert.ok(box.y >= bounds.minRow * 16);
+      assert.ok(box.x + box.w <= (bounds.maxCol + 1) * 16);
+      assert.ok(box.y + box.h <= (bounds.maxRow + 1) * 16);
+    }
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) {
+        const a = boxes[i];
+        const b = boxes[j];
+        assert.ok(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y);
+      }
+    }
+  }
+});
+
 test('stats lines summarise the day', () => {
   assert.deepEqual(statsLines(null), ['TODAY', 'waiting for data…']);
   assert.deepEqual(
@@ -77,11 +99,21 @@ test('confetti is deterministic, bursts upward, then falls', () => {
   assert.ok(meanY(confettiParticles(100, 100, 2400, 7)) > meanY(a));
 });
 
-test('tints and LED colours follow phase and monitor state', () => {
+test('tints and LED colours follow phase and every monitor state', () => {
   assert.equal(phaseTint('day'), null);
   assert.match(String(phaseTint('night')), /^rgba\(/);
   assert.equal(ledColor('down', true, true), '#ff3b30');
+  assert.equal(ledColor('up', true, true), '#39ff14');
   assert.equal(ledColor('up', true, false), '#1b5e20');
-  assert.equal(ledColor('up', false, true), '#6b6b6b');
+  assert.equal(ledColor('flapping', true, true), '#ffb300');
+  assert.equal(ledColor('flapping', true, false), '#ffb300');
+  assert.equal(ledColor('pending', true, true), '#ffb300');
+  assert.equal(ledColor('pending', true, false), '#ffb300');
+  assert.equal(ledColor('maintenance', true, true), '#40c4ff');
+  assert.equal(ledColor('maintenance', true, false), '#40c4ff');
+  assert.equal(ledColor('unknown', true, true), '#6b6b6b');
+  assert.equal(ledColor('unknown', true, false), '#6b6b6b');
+  assert.equal(ledColor('down', false, true), '#6b6b6b');
+  assert.equal(ledColor('down', false, false), '#6b6b6b');
 });
 /* eslint-enable pixel-agents/no-inline-colors */

@@ -50,14 +50,34 @@ export function areaBounds(
 }
 
 export function cabinetBoxes(bounds: Bounds, groups: SolGroup[]): CabinetBox[] {
-  const x0 = bounds.minCol * TILE_SIZE + 8;
-  const y0 = bounds.minRow * TILE_SIZE + 14;
-  return groups.map((g, i) => ({
-    groupName: g.name,
-    x: x0 + i * (CABINET_W + CABINET_GAP),
-    y: y0,
-    w: CABINET_W,
-    h: CABINET_H,
+  if (groups.length === 0) return [];
+  const roomLeft = bounds.minCol * TILE_SIZE;
+  const roomTop = bounds.minRow * TILE_SIZE;
+  const roomRight = (bounds.maxCol + 1) * TILE_SIZE;
+  const roomBottom = (bounds.maxRow + 1) * TILE_SIZE;
+  const left = roomLeft + 8;
+  const top = roomTop + 14;
+  const availableWidth = roomRight - left - 8;
+  const availableHeight = roomBottom - top - 8;
+  const columns = Math.min(
+    groups.length,
+    Math.max(1, Math.floor((availableWidth + CABINET_GAP) / (CABINET_W + CABINET_GAP))),
+  );
+  const rows = Math.ceil(groups.length / columns);
+  const width = Math.max(
+    1,
+    Math.min(CABINET_W, Math.floor((availableWidth - (columns - 1) * CABINET_GAP) / columns)),
+  );
+  const height = Math.max(
+    1,
+    Math.min(CABINET_H, Math.floor((availableHeight - (rows - 1) * CABINET_GAP) / rows)),
+  );
+  return groups.map((group, i) => ({
+    groupName: group.name,
+    x: left + (i % columns) * (width + CABINET_GAP),
+    y: top + Math.floor(i / columns) * (height + CABINET_GAP),
+    w: width,
+    h: height,
   }));
 }
 
