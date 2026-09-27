@@ -1,0 +1,98 @@
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+
+import { beforeEach, describe, expect, it } from 'vitest';
+
+import { classifyRun, openclawKey,OpenClawSource } from '../src/homeai/openclawSource.js';
+import type { MailroomKind, SessionEvent, SourceSink, TrackedAgent } from '../src/homeai/types.js';
+
+const NOW = Date.parse('2026-09-27T15:00:00Z');
+const traj = (type: string, sessionKey: string, data: Record<string, unknown>) =>
+  JSON.stringify({ type, sessionKey, data, ts: '2026-09-27T14:59:00Z' });
+const touch = (file: string) => fs.utimesSync(file, (NOW - 1000) / 1000, (NOW - 1000) / 1000);
+
+class Sink implements SourceSink {
+  upserts: TrackedAgent[] = [];
+  applied: { key: string; kinds: string[]; replay: boolean }[] = [];
+  mail: [string, MailroomKind, string, boolean][] = [];
+  upsertAgent(a: TrackedAgent) {
+    this.upserts.push(a);
+  }
+  applyEvents(key: string, e: SessionEvent[], replay: boolean) {
+    this.applied.push({ key, kinds: e.map((x) => x.kind), replay });
+  }
+  removeAgent() {}
+  mailroom(key: string, kind: MailroomKind, phase: 'start' | 'end', failed: boolean) {
+    this.mail.push([key, kind, phase, failed]);
+  }
+}
+
+describe('classifyRun', () => {
+  it('maps hook → phone, cron or heartbeat → clock, everything else → envelope', () => {
+    expect(classifyRun('agent:main:hook:x', 'cron')).toBe('phone');
+    expect(classifyRun('agent:main:cron:x', 'cron')).toBe('clock');
+    expect(classifyRun('agent:main:main', 'heartbeat')).toBe('clock');
+    expect(classifyRun('agent:main:discord:c', 'user')).toBe('envelope');
+  });
+});
+
+describe('OpenClawSource', () => {
+  let dir: string;
+  let sink: Sink;
+  let src: OpenClawSource;
+
+  beforeEach(() => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'homeai-oc-'));
+    dir = path.join(root, 'main', 'sessions');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, 'r1.jsonl'),
+      `${JSON.stringify({ type: 'session', id: 'r1', cwd: 'C:\\ws', timestamp: 't' })}\n`,
+    );
+    fs.writeFileSync(
+      path.join(dir, 'r1.trajectory.jsonl'),
+      `${traj('session.started', 'agent:main:cron:j', { trigger: 'cron' })}\n`,
+    );
+    for (const f of fs.readdirSync(dir)) touch(path.join(dir, f));
+    sink = new Sink();
+    src = new OpenClawSource({ root, agents: ['main'], sink, now: () => NOW });
+  });
+
+  it('seats one persistent character per configured agent in the OpenClaw folder', () => {
+    src.start();
+    expect(sink.upserts).toEqual([
+      {
+        key: openclawKey('main'),
+        source: 'openclaw',
+        role: 'openclaw',
+        name: 'main',
+        folderName: 'OpenClaw',
+      },
+    ]);
+  });
+
+  it('replays existing lines without mailroom effects, then emits live starts and failed ends', () => {
+    src.start();
+    src.discover();
+    src.poll();
+    expect(sink.mail).toEqual([]);
+    expect(sink.applied).toEqual([{ key: openclawKey('main'), kinds: [], replay: true }]);
+
+    fs.appendFileSync(
+      path.join(dir, 'r1.trajectory.jsonl'),
+      `${traj('session.ended', 'agent:main:cron:j', { status: 'error' })}\n`,
+    );
+    src.poll();
+    expect(sink.mail).toEqual([[openclawKey('main'), 'clock', 'end', true]]);
+
+    const r2 = path.join(dir, 'r2.trajectory.jsonl');
+    fs.writeFileSync(r2, '');
+    touch(r2);
+    src.discover();
+    src.poll();
+    fs.appendFileSync(r2, `${traj('session.started', 'agent:main:hook:h', { trigger: 'cron' })}\n`);
+    src.poll();
+    expect(sink.mail.at(-1)).toEqual([openclawKey('main'), 'phone', 'start', false]);
+  });
+});
