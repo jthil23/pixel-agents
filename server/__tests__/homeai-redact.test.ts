@@ -65,6 +65,23 @@ describe('redactor', () => {
       `mysql://apiKey:${MASK}@192.168.1.103:3366/db`,
     );
   });
+  it('protects complete URL userinfo while redacting URL-like name/value text', () => {
+    expect(redact('mysql://foo+apiKey:hunter22@192.168.1.103:3366/db')).toBe(
+      `mysql://foo+apiKey:${MASK}@192.168.1.103:3366/db`,
+    );
+    expect(redact('mysql://foo%20apiKey:hunter22@192.168.1.103:3366/db')).toBe(
+      `mysql://foo%20apiKey:${MASK}@192.168.1.103:3366/db`,
+    );
+    expect(redact('mysql://apiKey:hunter22@192.168.1.103:3366/db')).toBe(
+      `mysql://apiKey:${MASK}@192.168.1.103:3366/db`,
+    );
+    expect(redact('mysql://token:hunter22@192.168.1.103:3366/db')).toBe(
+      `mysql://token:${MASK}@192.168.1.103:3366/db`,
+    );
+    expect(redact('http://apiKey=abc12345')).toBe(`http://apiKey=${MASK}`);
+    expect(redact('https://h/cb?token=abc123&x=1')).toBe(`https://h/cb?token=${MASK}&x=1`);
+    expect(redact('url=http://host password=x')).toBe('url=http://host password=' + MASK);
+  });
 
   it('does not confuse URL values with following JSON secrets', () => {
     expect(redact('{"url":"http://host","password":"hunter2"}')).toBe(

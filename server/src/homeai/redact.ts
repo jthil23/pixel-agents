@@ -13,8 +13,10 @@ const SHAPES: RegExp[] = [
 ];
 const BEARER = /\b(Bearer\s+)[-A-Za-z0-9._~+/]+=*/gi;
 const URL_PASSWORD = /(\b[a-z][a-z0-9+.-]*:\/\/[^\s:@/]+:)([^\s@/]+)(@)/gi;
+const URL_USERINFO = /\b[a-z][a-z0-9+.-]*:\/\/[^\s\/@"'?#]*@/gi;
+const PLACEHOLDER = /\u0000(\d+)\u0000/g;
 const NAME_VALUE =
-  /(?<!:\/\/)(["']?)([A-Za-z0-9_.-]*(?:key|token|secret|password|passwd|auth)[A-Za-z0-9_.-]*)\1(\s*[:=]\s*)(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|([^\s};]+))/gi;
+  /(["']?)([A-Za-z0-9_.-]*(?:key|token|secret|password|passwd|auth)[A-Za-z0-9_.-]*)\1(\s*[:=]\s*)(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|([^\s};&]+))/gi;
 
 export function createRedactor(env: NodeJS.ProcessEnv = process.env): (s: string) => string {
   const values = Object.entries(env)
@@ -27,6 +29,8 @@ export function createRedactor(env: NodeJS.ProcessEnv = process.env): (s: string
     for (const re of SHAPES) s = s.replace(re, MASK);
     s = s.replace(BEARER, `$1${MASK}`);
     s = s.replace(URL_PASSWORD, `$1${MASK}$3`);
+    const spans: string[] = [];
+    s = s.replace(URL_USERINFO, (userinfo) => `\u0000${spans.push(userinfo) - 1}\u0000`);
     s = s.replace(
       NAME_VALUE,
       (
@@ -37,11 +41,7 @@ export function createRedactor(env: NodeJS.ProcessEnv = process.env): (s: string
         doubleValue: string | undefined,
         singleValue: string | undefined,
         unquotedValue: string | undefined,
-        offset: number,
       ) => {
-        const schemeStart = s.lastIndexOf('://', offset);
-        if (schemeStart !== -1 && /^[A-Za-z0-9_.-]*$/.test(s.slice(schemeStart + 3, offset)))
-          return match;
         const value = doubleValue ?? singleValue ?? unquotedValue;
         if (
           name.toLowerCase() === 'authorization' &&
@@ -52,6 +52,6 @@ export function createRedactor(env: NodeJS.ProcessEnv = process.env): (s: string
         return `${q1}${name}${q1}${sep}${quote}${MASK}${quote}`;
       },
     );
-    return s;
+    return s.replace(PLACEHOLDER, (placeholder, i: string) => spans[Number(i)] ?? placeholder);
   };
 }
