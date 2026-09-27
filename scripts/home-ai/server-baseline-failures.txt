@@ -1,0 +1,24 @@
+cli.test.ts :: dist/cli.js entry-point guard installs the bundled hook script from the package root on startup
+clientMessageHandler.test.ts :: clientMessageHandler: areas + carpet wire ordering handleWebviewReady ordering always emits areaMappingsLoaded, even with no persisted mappings (sends {})
+clientMessageHandler.test.ts :: clientMessageHandler: areas + carpet wire ordering handleWebviewReady ordering emits settingsLoaded with showAreas before areaMappingsLoaded before existingAgents
+clientMessageHandler.test.ts :: clientMessageHandler: areas + carpet wire ordering saveAreaMappings does not leak into the vscode namespace
+clientMessageHandler.test.ts :: clientMessageHandler: areas + carpet wire ordering saveAreaMappings is a no-op when mappings is missing or not an object
+clientMessageHandler.test.ts :: clientMessageHandler: areas + carpet wire ordering saveAreaMappings persists a valid mapping payload to cfg.standalone.areaMappings
+clientMessageHandler.test.ts :: clientMessageHandler: areas + carpet wire ordering setHooksEnabled persistence does not persist hooks-off when the uninstall failed
+clientMessageHandler.test.ts :: clientMessageHandler: areas + carpet wire ordering setHooksEnabled persistence ignores the toggle entirely when the client is not privileged
+clientMessageHandler.test.ts :: clientMessageHandler: areas + carpet wire ordering setHooksEnabled persistence persists the preference when the outcome matches the request
+configPersistence.test.ts :: configPersistence: areas hooksConsent / hooksEnabled maps a grant replacing a decline clears the decline preference remnant
+configPersistence.test.ts :: configPersistence: areas hooksConsent / hooksEnabled maps clearHooksEnabled removes the key so the default (true) applies again
+configPersistence.test.ts :: configPersistence: areas hooksConsent / hooksEnabled maps defaults to unanswered/enabled when the config file is missing or predates the maps
+configPersistence.test.ts :: configPersistence: areas hooksConsent / hooksEnabled maps drops junk values from hand-edited maps instead of crashing or trusting them
+configPersistence.test.ts :: configPersistence: areas hooksConsent / hooksEnabled maps recordHooksDecline writes consent + preference in ONE cycle; clearHooksAnswer undoes both
+configPersistence.test.ts :: configPersistence: areas readConfig + writeConfig round-trip for area settings coerces a hand-edited config.json with malformed areaMappings into defaults
+configPersistence.test.ts :: configPersistence: areas readConfig + writeConfig round-trip for area settings keeps namespaces isolated when only one writes mappings
+consentFlow.test.ts :: clientMessageHandler: hooks consent flow hooksConsentRequest on webviewReady asks again on the next connect after a notNow
+consentFlow.test.ts :: clientMessageHandler: hooks consent flow hooksConsentResponse install runs the install side effect and persists the preference on success
+consentFlow.test.ts :: clientMessageHandler: hooks consent flow hooksConsentResponse revision over an earlier answer a failed revert keeps the grant and reports hooks still installed
+consentFlow.test.ts :: clientMessageHandler: hooks consent flow hooksConsentResponse revision over an earlier answer a revised never takes the full toggle-off path: uninstall, then persist off
+mockClaudeRunner.test.ts :: mock-claude-runner hook execution deletes configured paths with template values
+mockClaudeRunner.test.ts :: mock-claude-runner hook execution executes only Pixel Agents hooks from ~/.claude/settings.json
+mockClaudeRunner.test.ts :: mock-claude-runner hook execution writes configured sidecar metadata next to custom transcript paths
+mockClaudeRunner.test.ts :: mock-claude-runner hook execution writes timed JSON files with template paths
