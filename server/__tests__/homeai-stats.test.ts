@@ -142,4 +142,58 @@ describe('StatsAggregator', () => {
     write(file, rows.slice(0, 2));
     expect(agg.refresh(null)).toMatchObject({ toolCalls: 1, spendByModel: { opus: 1.5 } });
   });
+  it('keeps busiest-agent stats after its transcript is deleted', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'homeai-deleted-'));
+    const ompDir = path.join(home, 'omp', 'project');
+    fs.mkdirSync(ompDir, { recursive: true });
+    const file = path.join(ompDir, 'Scout.jsonl');
+    write(file, [
+      JSON.stringify({
+        type: 'session',
+        id: 's',
+        cwd: 'G:\\Home-AI',
+        title: 'Scout',
+        timestamp: TODAY,
+      }),
+      msg(TODAY, {
+        role: 'assistant',
+        model: 'opus',
+        usage: { cost: { total: 1 } },
+        content: [{ type: 'toolCall', id: 'a', name: 'read', arguments: {} }],
+      }),
+    ]);
+    const agg = new StatsAggregator({
+      ompRoot: path.join(home, 'omp'),
+      openclawRoot: path.join(home, 'oc'),
+      openclawAgents: [],
+      now: () => NOW,
+    });
+    agg.refresh(null);
+    fs.unlinkSync(file);
+    expect(agg.refresh(null).busiestAgent).toBe('Scout');
+  });
+
+  it('does not classify an agent from a title that begins with the advisor prefix', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'homeai-advisor-title-'));
+    const ompDir = path.join(home, 'omp', 'project');
+    fs.mkdirSync(ompDir, { recursive: true });
+    write(path.join(ompDir, 'session.jsonl'), [
+      JSON.stringify({ type: 'session', id: 's', cwd: 'G:\\Home-AI', timestamp: TODAY }),
+      JSON.stringify({ type: 'title', title: '__advisor investigation' }),
+      JSON.stringify({ type: 'title_change', title: 'Fixed title' }),
+      msg(TODAY, {
+        role: 'assistant',
+        model: 'opus',
+        usage: { cost: { total: 1 } },
+        content: [{ type: 'toolCall', id: 'a', name: 'read', arguments: {} }],
+      }),
+    ]);
+    const agg = new StatsAggregator({
+      ompRoot: path.join(home, 'omp'),
+      openclawRoot: path.join(home, 'oc'),
+      openclawAgents: [],
+      now: () => NOW,
+    });
+    expect(agg.refresh(null).busiestAgent).toBe('Fixed title');
+  });
 });

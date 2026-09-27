@@ -35,8 +35,14 @@ interface FileState {
   runKind: MailroomKind | undefined;
   name: string;
   isRoot: boolean;
+  isAdvisor: boolean;
   lastSize: number;
   contribution: Contribution;
+}
+
+interface DailyAgent {
+  name: string;
+  toolCalls: number;
 }
 
 interface Contribution {
@@ -52,6 +58,7 @@ const MAX_WALK_DEPTH = 6;
 export class StatsAggregator {
   private day = '';
   private files = new Map<string, FileState>();
+  private dailyAgents = new Map<string, DailyAgent>();
   private spendByModel: Record<string, number> = {};
   private openclawTokens = 0;
   private toolCalls = 0;
@@ -83,9 +90,15 @@ export class StatsAggregator {
       }
       if (size < st.lastSize) {
         this.subtract(st.contribution);
+        const dailyAgent = this.dailyAgents.get(file);
+        if (dailyAgent) {
+          dailyAgent.toolCalls -= st.contribution.toolCalls;
+          dailyAgent.name = path.basename(file, '.jsonl');
+        }
         st.tail = new JsonlTail(file);
         st.parser = createSessionParser();
         st.runKind = undefined;
+        st.name = path.basename(file, '.jsonl');
         st.contribution = {
           toolCalls: 0,
           spendByModel: {},
@@ -107,10 +120,10 @@ export class StatsAggregator {
     }
     let busiestAgent: string | null = null;
     let best = 0;
-    for (const st of this.files.values()) {
-      if (st.contribution.toolCalls > best) {
-        best = st.contribution.toolCalls;
-        busiestAgent = st.name;
+    for (const agent of this.dailyAgents.values()) {
+      if (agent.toolCalls > best) {
+        best = agent.toolCalls;
+        busiestAgent = agent.name;
       }
     }
     return {
@@ -128,6 +141,7 @@ export class StatsAggregator {
   private reset(day: string): void {
     this.day = day;
     this.files = new Map();
+    this.dailyAgents = new Map();
     this.spendByModel = {};
     this.openclawTokens = 0;
     this.toolCalls = 0;
@@ -169,14 +183,16 @@ export class StatsAggregator {
         } catch {
           continue;
         }
+        const name = path.basename(full, '.jsonl');
         this.files.set(full, {
           tail: new JsonlTail(full),
           parser: createSessionParser(),
           source,
           trajectory: it.name.endsWith('.trajectory.jsonl'),
           runKind: undefined,
-          name: path.basename(full, '.jsonl'),
+          name,
           isRoot: source === 'omp' && depth === 1,
+          isAdvisor: name.startsWith('__advisor'),
           lastSize: stat.size,
           contribution: {
             toolCalls: 0,
@@ -186,6 +202,7 @@ export class StatsAggregator {
             cronFailed: 0,
           },
         });
+        this.dailyAgents.set(full, { name, toolCalls: 0 });
       }
     };
     walk(this.o.ompRoot, 0, 'omp');
@@ -193,19 +210,19 @@ export class StatsAggregator {
       walk(path.join(this.o.openclawRoot, agent, 'sessions'), 0, 'openclaw');
   }
 
-  private countSession(_file: string, st: FileState, line: string, midnight: number): void {
+  private countSession(file: string, st: FileState, line: string, midnight: number): void {
     for (const ev of st.parser.parseLine(line)) {
-      if (
-        ev.kind === 'title' &&
-        st.source === 'omp' &&
-        st.isRoot &&
-        !st.name.startsWith('__advisor')
-      )
+      if (ev.kind === 'title' && st.source === 'omp' && st.isRoot && !st.isAdvisor) {
         st.name = ev.title;
+        const dailyAgent = this.dailyAgents.get(file);
+        if (dailyAgent) dailyAgent.name = ev.title;
+      }
       if (ev.kind !== 'title' && (Date.parse(ev.at) || 0) < midnight) continue;
       if (ev.kind === 'toolStart') {
         this.toolCalls += 1;
         st.contribution.toolCalls += 1;
+        const dailyAgent = this.dailyAgents.get(file);
+        if (dailyAgent) dailyAgent.toolCalls += 1;
       } else if (ev.kind === 'usage') {
         if (st.source === 'omp') {
           this.spendByModel[ev.model] = (this.spendByModel[ev.model] ?? 0) + ev.costUsd;
