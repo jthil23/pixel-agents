@@ -22,15 +22,17 @@ const panelStyle: React.CSSProperties = {
   position: 'absolute',
   top: 44,
   right: 8,
-  width: 300,
+  width: 450,
+  maxWidth: 'calc(100vw - 32px)',
   maxHeight: 'calc(100% - 60px)',
   overflowY: 'auto',
   background: 'rgba(21,16,32,0.94)',
   border: '3px solid #3a2f55',
   color: '#eee',
-  padding: 10,
+  padding: 16,
   zIndex: 50,
-  fontSize: 13,
+  fontSize: 'var(--text-sm)',
+  lineHeight: 1.5,
 };
 
 export function HomeAiPanel() {
@@ -53,11 +55,13 @@ export function HomeAiPanel() {
       : false;
     body = d ? (
       <>
-        <h3 style={{ margin: '0 0 4px' }}>{d.title}</h3>
+        <h3 style={{ margin: '0 0 6px', fontSize: 'var(--text-lg)', lineHeight: 1.25 }}>
+          {d.title}
+        </h3>
         <div>{`${d.role} · ${d.source}`}</div>
         <div>{d.model || 'model: —'}</div>
         <div>{`$${d.costUsd.toFixed(2)} · ${(d.contextTokens / 1000).toFixed(1)}k ctx`}</div>
-        <ul style={{ paddingLeft: 16, margin: '8px 0' }}>
+        <ul style={{ paddingLeft: 24, margin: '12px 0' }}>
           {d.recentTools.map((t, i) => (
             <li key={i} style={{ color: t.isError ? '#ff8a80' : t.done ? '#bbb' : '#fff' }}>
               {`${t.done ? (t.isError ? '✗' : '✓') : '…'} ${t.status}`}
@@ -82,19 +86,21 @@ export function HomeAiPanel() {
     const group = s.sol.groups.find((g) => g.name === name);
     body = (
       <>
-        <h3 style={{ margin: '0 0 6px' }}>{`${name}${s.sol.reachable ? '' : ' (no signal)'}`}</h3>
+        <h3 style={{ margin: '0 0 9px', fontSize: 'var(--text-lg)', lineHeight: 1.25 }}>
+          {`${name}${s.sol.reachable ? '' : ' (no signal)'}`}
+        </h3>
         {(group?.monitors ?? []).map((m) => (
-          <div key={m.id} style={{ marginBottom: 6 }}>
+          <div key={m.id} style={{ marginBottom: 9 }}>
             <span style={{ color: STATE_COLOR[m.state] }}>■ </span>
             {`${m.name} · ${m.state}${m.beats.length && m.beats[m.beats.length - 1].ping !== null ? ` · ${m.beats[m.beats.length - 1].ping} ms` : ''}`}
-            <div style={{ display: 'flex', gap: 1, marginTop: 2 }}>
+            <div style={{ display: 'flex', gap: 2, marginTop: 3 }}>
               {m.beats.map((b, i) => (
                 <span
                   key={i}
                   title={`${b.time} UTC`}
                   style={{
-                    width: 6,
-                    height: 8,
+                    width: 9,
+                    height: 12,
                     background: BEAT_COLOR[b.status] ?? '#6b6b6b',
                     display: 'inline-block',
                   }}

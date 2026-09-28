@@ -15,6 +15,7 @@ import {
   CONTEXT_WARN_THRESHOLD,
   TEAM_LEAD_COLOR,
   TEAM_ROLE_COLOR,
+  TOOL_OVERLAY_TEXT_SCALE,
   TOOL_OVERLAY_VERTICAL_OFFSET,
 } from '../../constants.js';
 import type { SubagentCharacter } from '../../hooks/useExtensionMessages.js';
@@ -217,7 +218,7 @@ export function ToolOverlay({
             className="absolute flex flex-col items-center -translate-x-1/2"
             style={{
               left: screenX,
-              top: screenY - (hasExtraLines ? 34 : 28),
+              top: screenY - (hasExtraLines ? 34 : 28) * TOOL_OVERLAY_TEXT_SCALE,
               pointerEvents: isSelected ? 'auto' : 'none',
               opacity: alwaysShowOverlay && !isSelected && !isHovered ? (isSub ? 0.5 : 0.75) : 1,
               zIndex: isSelected ? 42 : 41,
@@ -225,10 +226,10 @@ export function ToolOverlay({
             data-testid="agent-overlay"
             data-agent-id={id}
           >
-            <div className="flex items-center border-border px-8 pt-2 pb-4 gap-5 pixel-panel whitespace-nowrap max-w-2xs">
+            <div className="flex items-center border-border px-12 pt-3 pb-6 gap-8 pixel-panel whitespace-nowrap max-w-md">
               {dotColor && (
                 <span
-                  className={`w-6 h-6 rounded-full shrink-0 ${isActive && !hasPermission && !hasWaiting ? 'pixel-pulse' : ''}`}
+                  className={`w-9 h-9 rounded-full shrink-0 ${isActive && !hasPermission && !hasWaiting ? 'pixel-pulse' : ''}`}
                   style={{ background: dotColor }}
                 />
               )}
@@ -237,7 +238,7 @@ export function ToolOverlay({
                   <span
                     className="overflow-hidden text-ellipsis block leading-none"
                     style={{
-                      fontSize: '18px',
+                      fontSize: `${18 * TOOL_OVERLAY_TEXT_SCALE}px`,
                       color: ch.isTeamLead ? TEAM_LEAD_COLOR : TEAM_ROLE_COLOR,
                       fontWeight: ch.isTeamLead ? 'bold' : undefined,
                     }}
@@ -248,14 +249,17 @@ export function ToolOverlay({
                 <span
                   className="overflow-hidden text-ellipsis block leading-none"
                   style={{
-                    fontSize: isSub ? '20px' : '22px',
+                    fontSize: `${(isSub ? 20 : 22) * TOOL_OVERLAY_TEXT_SCALE}px`,
                     fontStyle: isSub ? 'italic' : undefined,
                   }}
                 >
                   {activityText}
                 </span>
                 {ch.folderName && (
-                  <span className="text-2xs leading-none overflow-hidden text-ellipsis block">
+                  <span
+                    className="text-2xs leading-none overflow-hidden text-ellipsis block"
+                    style={{ fontSize: `${16 * TOOL_OVERLAY_TEXT_SCALE}px` }}
+                  >
                     {ch.folderName}
                   </span>
                 )}

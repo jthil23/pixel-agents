@@ -11,32 +11,10 @@ interface DrawnText {
   text: string;
   width: number;
   fontPx: number;
+  color: string;
 }
 
-test('overlay text scales with zoom and clips to nameplate, board, and cabinet widths', () => {
-  const drawn: DrawnText[] = [];
-  const ctx = {
-    font: '',
-    fillStyle: '',
-    strokeStyle: '',
-    lineWidth: 1,
-    imageSmoothingEnabled: true,
-    textAlign: 'start' as CanvasTextAlign,
-    textBaseline: 'alphabetic' as CanvasTextBaseline,
-    save() {},
-    restore() {},
-    fillRect() {},
-    strokeRect() {},
-    measureText(this: { font: string }, text: string) {
-      const fontPx = Number.parseFloat(this.font);
-      return { width: text.length * fontPx } as TextMetrics;
-    },
-    fillText(this: { font: string }, text: string) {
-      const fontPx = Number.parseFloat(this.font);
-      drawn.push({ text, width: text.length * fontPx, fontPx });
-    },
-  } as unknown as CanvasRenderingContext2D;
-
+test('Home-AI signs, whiteboard, and cabinet labels stay legible and fit at proportional zoom', () => {
   const state = createHomeAiState();
   state.active = true;
   state.rooms = { 'Server Room': 'An exceptionally long server room name' };
@@ -50,49 +28,117 @@ test('overlay text scales with zoom and clips to nameplate, board, and cabinet w
     cronOk: 123456,
     cronFailed: 123456,
   };
-  const areaTiles = Array.from({ length: 90 }, () => 'Server Room');
-  for (let col = 0; col < 5; col++) areaTiles[col] = 'Break Room';
-  for (let col = 5; col < 10; col++) areaTiles[col] = 'Mailroom';
+  const cols = 45;
+  const rows = 22;
+  const areaTiles = Array.from({ length: cols * rows }, (_, i) => {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    if (row < 2 || row > 10) return null;
+    if (col >= 1 && col <= 21) return 'Break Room';
+    if (col >= 23 && col <= 32) return 'Mailroom';
+    if (col >= 34 && col <= 43) return 'Server Room';
+    return null;
+  });
   const layout = {
-    cols: 10,
-    rows: 9,
+    cols,
+    rows,
     areaTiles,
-    furniture: [{ type: 'WHITEBOARD', col: 0, row: 0 }],
+    furniture: [
+      { type: 'WHITEBOARD', col: 9, row: 0 },
+      { type: 'COFFEE_TABLE', col: 14, row: 6 },
+    ],
   } as unknown as OfficeLayout;
 
-  renderHomeAiLayer({
-    ctx,
-    state,
-    layout,
-    characters: [],
-    offsetX: 0,
-    offsetY: 0,
-    zoom: 0.5,
-    width: 200,
-    height: 200,
-    now: 1000,
-  });
+  const renderAtZoom = (zoom: number, reachable = true) => {
+    state.sol.reachable = reachable;
+    const drawn: DrawnText[] = [];
+    const rectangles: { x: number; y: number; width: number; height: number }[] = [];
+    const ctx = {
+      font: '',
+      fillStyle: '',
+      strokeStyle: '',
+      lineWidth: 1,
+      imageSmoothingEnabled: true,
+      textAlign: 'start' as CanvasTextAlign,
+      textBaseline: 'alphabetic' as CanvasTextBaseline,
+      save() {},
+      restore() {},
+      fillRect(x: number, y: number, width: number, height: number) {
+        rectangles.push({ x, y, width, height });
+      },
+      strokeRect() {},
+      measureText(this: { font: string }, text: string) {
+        const fontPx = Number.parseFloat(this.font);
+        return { width: text.length * fontPx * 0.7 } as TextMetrics;
+      },
+      fillText(this: { font: string; fillStyle: string }, text: string) {
+        const fontPx = Number.parseFloat(this.font);
+        drawn.push({ text, width: text.length * fontPx * 0.7, fontPx, color: this.fillStyle });
+      },
+    } as unknown as CanvasRenderingContext2D;
 
-  assert.ok(drawn.some((entry) => entry.text.endsWith('…')));
-  assert.ok(drawn.some((entry) => entry.text === 'Break Room'));
-  assert.ok(drawn.some((entry) => entry.text === 'Mailroom'));
-  assert.ok(drawn.some((entry) => entry.text === 'Server Room'));
-  const boardLines = drawn.filter(
+    const boxes = renderHomeAiLayer({
+      ctx,
+      state,
+      layout,
+      characters: [],
+      offsetX: 0,
+      offsetY: 0,
+      zoom,
+      width: 200,
+      height: 200,
+      now: 1000,
+    });
+    return { drawn, rectangles, boxes };
+  };
+
+  const low = renderAtZoom(0.5);
+  const high = renderAtZoom(1);
+  const fontSize = (drawn: DrawnText[], text: string) => {
+    const entry = drawn.find((candidate) => candidate.text === text);
+    assert.ok(entry, `expected ${JSON.stringify(text)} to be drawn`);
+    return entry.fontPx;
+  };
+
+  assert.ok(low.drawn.some((entry) => entry.text.endsWith('…')));
+  assert.equal(fontSize(high.drawn, 'Break Room'), 11);
+  assert.equal(fontSize(high.drawn, 'TODAY'), 9);
+  assert.equal(fontSize(high.drawn, 'Extrem'), 7);
+  assert.ok(
+    Math.abs(fontSize(high.drawn, 'Break Room') - fontSize(low.drawn, 'Break Room') * 2) <= 1,
+  );
+  assert.ok(Math.abs(fontSize(high.drawn, 'TODAY') - fontSize(low.drawn, 'TODAY') * 2) <= 1);
+  assert.ok(Math.abs(fontSize(high.drawn, 'Extrem') - fontSize(low.drawn, 'Extrem') * 2) <= 1);
+
+  const board = low.rectangles.find((rect) => rect.x === 72 && rect.y === 16);
+  assert.ok(board);
+  assert.equal(board.width, 72 * 1.75 * 0.5);
+  assert.equal(board.height, (2 + 5 * 5.5 + 5 + 1.5) * 1.75 * 0.5);
+  const boardLeft = board.x / 0.5;
+  const boardTop = board.y / 0.5;
+  const boardRight = boardLeft + board.width / 0.5;
+  const boardBottom = boardTop + board.height / 0.5;
+  assert.ok(boardLeft >= 16 && boardRight <= 22 * 16);
+  assert.ok(boardTop >= 2 * 16 && boardBottom <= 6 * 16);
+  const boardLines = low.drawn.filter(
     (entry) =>
       ['TODAY', 'waiting for data…'].includes(entry.text) ||
       /^(\$|busy:|claw |cron |SOL )/.test(entry.text),
   );
-  assert.ok(boardLines.length > 0);
-  assert.ok(boardLines.every((entry) => entry.width <= 68 * 0.5));
-  const cabinetLabel = drawn.find((entry) => entry.text.endsWith('…') && entry.width <= 20 * 0.5);
+  assert.equal(boardLines.length, 6);
+  assert.ok(boardLines.every((entry) => entry.width <= 68 * 1.75 * 0.5));
+
+  const cabinetBox = low.boxes[0];
+  const cabinetLabel = low.drawn.find((entry) => entry.text === 'Extrem');
   assert.ok(cabinetLabel);
-  const roomNameplate = drawn.find(
-    (entry) => entry.text.endsWith('…') && entry.width <= (160 - 6) * 0.5 && entry.width > 20 * 0.5,
-  );
-  assert.ok(drawn.some((entry) => entry.fontPx === 3));
-  assert.ok(drawn.some((entry) => entry.fontPx === 2));
-  assert.ok(roomNameplate);
-  assert.ok(drawn.some((entry) => entry.fontPx <= 3));
+  assert.ok(cabinetLabel.width <= cabinetBox.labelWidth * 0.5);
+  assert.ok(cabinetBox.labelWidth > cabinetBox.w);
+  const offline = renderAtZoom(1, false);
+  assert.equal(fontSize(offline.drawn, 'NO SIGNAL'), 11);
+  const noSignal = offline.rectangles.find((rect) => rect.y === 156 && rect.width < 90);
+  assert.ok(noSignal);
+  assert.ok(noSignal.x >= 34 * 16 && noSignal.x + noSignal.width <= 44 * 16);
+  assert.ok(noSignal.y + noSignal.height <= 11 * 16);
 });
 
 test('expired effects and cron-fire timestamps are not rendered before pruning', () => {

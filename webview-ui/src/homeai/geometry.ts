@@ -14,6 +14,7 @@ export interface CabinetBox {
   y: number;
   w: number;
   h: number;
+  labelWidth: number;
 }
 export interface Particle {
   x: number;
@@ -21,9 +22,14 @@ export interface Particle {
   color: string;
 }
 
+export const HOME_AI_TEXT_SCALE = 1.75;
 export const CABINET_W = 20;
 export const CABINET_H = 44;
-const CABINET_GAP = 12;
+const CABINET_LABEL_MIN_WIDTH = 6 * 4 * HOME_AI_TEXT_SCALE;
+const CABINET_LABEL_HEIGHT = 9;
+const CABINET_LABEL_GAP = 1;
+const CABINET_LABEL_COLUMN_GAP = 2;
+const CABINET_LABEL_BOTTOM_RESERVED = 20;
 const CONFETTI_COUNT = 30;
 const CONFETTI_COLORS = ['#ff5252', '#ffd740', '#69f0ae', '#40c4ff', '#e040fb', '#ffffff'];
 const GRAVITY = 160;
@@ -68,27 +74,41 @@ export function cabinetBoxes(bounds: Bounds, groups: SolGroup[]): CabinetBox[] {
   const left = roomLeft + 8;
   const top = roomTop + 14;
   const availableWidth = roomRight - left - 8;
-  const availableHeight = roomBottom - top - 8;
+  const availableHeight = roomBottom - top - CABINET_LABEL_BOTTOM_RESERVED;
   const columns = Math.min(
     groups.length,
-    Math.max(1, Math.floor((availableWidth + CABINET_GAP) / (CABINET_W + CABINET_GAP))),
+    Math.max(
+      1,
+      Math.floor(
+        (availableWidth + CABINET_LABEL_COLUMN_GAP) /
+          (CABINET_LABEL_MIN_WIDTH + CABINET_LABEL_COLUMN_GAP),
+      ),
+    ),
   );
   const rows = Math.ceil(groups.length / columns);
-  const width = Math.max(
+  const labelWidth = Math.max(
     1,
-    Math.min(CABINET_W, Math.floor((availableWidth - (columns - 1) * CABINET_GAP) / columns)),
+    Math.floor((availableWidth - (columns - 1) * CABINET_LABEL_COLUMN_GAP) / columns),
   );
+  const width = Math.max(1, Math.min(CABINET_W, labelWidth));
+  const rowPitch = Math.max(1, Math.floor(availableHeight / rows));
   const height = Math.max(
     1,
-    Math.min(CABINET_H, Math.floor((availableHeight - (rows - 1) * CABINET_GAP) / rows)),
+    Math.min(CABINET_H, rowPitch - CABINET_LABEL_GAP - CABINET_LABEL_HEIGHT),
   );
-  return groups.map((group, i) => ({
-    groupName: group.name,
-    x: left + (i % columns) * (width + CABINET_GAP),
-    y: top + Math.floor(i / columns) * (height + CABINET_GAP),
-    w: width,
-    h: height,
-  }));
+  return groups.map((group, i) => {
+    const column = i % columns;
+    const row = Math.floor(i / columns);
+    const cellLeft = left + column * (labelWidth + CABINET_LABEL_COLUMN_GAP);
+    return {
+      groupName: group.name,
+      x: cellLeft + Math.floor((labelWidth - width) / 2),
+      y: top + row * rowPitch,
+      w: width,
+      h: height,
+      labelWidth,
+    };
+  });
 }
 
 export function hitCabinet(boxes: CabinetBox[], wx: number, wy: number): string | null {

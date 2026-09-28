@@ -9,6 +9,7 @@ import {
   AREA_LABEL_SHADOW_COLOR,
   AREA_OVERLAY_ALPHA,
   BUBBLE_FADE_DURATION_SEC,
+  BUBBLE_SCALE_FACTOR,
   BUBBLE_SITTING_OFFSET_PX,
   BUBBLE_VERTICAL_OFFSET_PX,
   BUTTON_ICON_COLOR,
@@ -788,7 +789,7 @@ function renderBubbles(
       alpha = ch.bubbleTimer / BUBBLE_FADE_DURATION_SEC;
     }
 
-    const cached = getCachedSprite(sprite, zoom);
+    const cached = getCachedSprite(sprite, zoom * BUBBLE_SCALE_FACTOR);
     // Position: centered above the character's head
     // Character is anchored bottom-center at (ch.x, ch.y), sprite is 16x24
     // Place bubble above head with a small gap; follow sitting offset

@@ -38,39 +38,66 @@ test('areaBounds caches per layout identity and recomputes for a new layout', ()
   assert.deepEqual(next, { minCol: 0, minRow: 0, maxCol: 0, maxRow: 0 });
 });
 
-test('cabinets line up left to right inside the room and are hit-testable', () => {
+test('cabinet label cells fit six-character names and remain inside the server room', () => {
   const groups = [
     { name: 'Core', monitors: [] },
     { name: 'Media', monitors: [] },
   ];
-  const boxes = cabinetBoxes({ minCol: 34, minRow: 2, maxCol: 43, maxRow: 10 }, groups);
+  const bounds = { minCol: 34, minRow: 2, maxCol: 43, maxRow: 10 };
+  const boxes = cabinetBoxes(bounds, groups);
+  const roomLeft = bounds.minCol * 16;
+  const roomRight = (bounds.maxCol + 1) * 16;
+  const roomBottom = (bounds.maxRow + 1) * 16;
+
   assert.deepEqual(
     boxes.map((b) => b.groupName),
     ['Core', 'Media'],
   );
-  assert.equal(boxes[1].x - boxes[0].x, boxes[0].w + 12);
-  assert.ok(boxes[1].x + boxes[1].w <= 44 * 16);
+  assert.equal(boxes[1].x - boxes[0].x, boxes[0].labelWidth + 2);
+  for (const box of boxes) {
+    const labelLeft = box.x + (box.w - box.labelWidth) / 2;
+    assert.ok(box.labelWidth >= 42);
+    assert.ok(labelLeft >= roomLeft);
+    assert.ok(labelLeft + box.labelWidth <= roomRight);
+    assert.ok(box.y + box.h + 1 + 9 <= roomBottom - 20);
+  }
   assert.equal(hitCabinet(boxes, boxes[1].x + 1, boxes[1].y + 1), 'Media');
   assert.equal(hitCabinet(boxes, boxes[0].x - 1, boxes[0].y), null);
 });
 
-test('one to eight cabinets stay inside the room without overlap', () => {
+test('one to eight cabinets and their labels stay inside without overlap', () => {
   const bounds = { minCol: 34, minRow: 2, maxCol: 43, maxRow: 10 };
+  const roomLeft = bounds.minCol * 16;
+  const roomTop = bounds.minRow * 16;
+  const roomRight = (bounds.maxCol + 1) * 16;
+  const roomBottom = (bounds.maxRow + 1) * 16;
   const groups = Array.from({ length: 8 }, (_, i) => ({ name: `Group ${i}`, monitors: [] }));
   for (let count = 1; count <= 8; count++) {
     const boxes = cabinetBoxes(bounds, groups.slice(0, count));
     assert.equal(boxes.length, count);
     for (const box of boxes) {
-      assert.ok(box.x >= bounds.minCol * 16);
-      assert.ok(box.y >= bounds.minRow * 16);
-      assert.ok(box.x + box.w <= (bounds.maxCol + 1) * 16);
-      assert.ok(box.y + box.h <= (bounds.maxRow + 1) * 16);
+      const labelLeft = box.x + (box.w - box.labelWidth) / 2;
+      assert.ok(box.x >= roomLeft);
+      assert.ok(box.y >= roomTop);
+      assert.ok(box.x + box.w <= roomRight);
+      assert.ok(box.y + box.h <= roomBottom);
+      assert.ok(box.labelWidth >= 42);
+      assert.ok(labelLeft >= roomLeft);
+      assert.ok(labelLeft + box.labelWidth <= roomRight);
+      assert.ok(box.y + box.h + 1 + 9 <= roomBottom - 20);
     }
     for (let i = 0; i < boxes.length; i++) {
       for (let j = i + 1; j < boxes.length; j++) {
         const a = boxes[i];
         const b = boxes[j];
         assert.ok(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y);
+        if (a.y === b.y) {
+          const aLabelLeft = a.x + (a.w - a.labelWidth) / 2;
+          const bLabelLeft = b.x + (b.w - b.labelWidth) / 2;
+          assert.ok(
+            aLabelLeft + a.labelWidth <= bLabelLeft || bLabelLeft + b.labelWidth <= aLabelLeft,
+          );
+        }
       }
     }
   }

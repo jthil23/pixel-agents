@@ -54,6 +54,8 @@ export const BUTTON_LINE_WIDTH_ZOOM_FACTOR = 0.5;
 export const BUBBLE_FADE_DURATION_SEC = 0.5;
 export const BUBBLE_SITTING_OFFSET_PX = 10;
 export const BUBBLE_VERTICAL_OFFSET_PX = 24;
+/** Scale factor for the speech-bubble sprite above characters. */
+export const BUBBLE_SCALE_FACTOR = 1.5;
 export const FALLBACK_FLOOR_COLOR = '#808080';
 
 // ── Rendering - Overlay Colors (canvas, not CSS) ─────────────
@@ -134,9 +136,9 @@ export const AREA_OVERLAY_ALPHA = 0.25;
 /** Alpha multiplier applied to the actively-selected area's overlay. */
 export const AREA_ACTIVE_ALPHA_MULTIPLIER = 1.6;
 /** Base font size (pixel-pre-zoom) for area centroid labels. */
-export const AREA_LABEL_FONT_SIZE_PX = 14;
+export const AREA_LABEL_FONT_SIZE_PX = 21;
 /** Minimum on-screen label size to keep labels legible at low zoom. */
-export const AREA_LABEL_MIN_FONT_SIZE_PX = 12;
+export const AREA_LABEL_MIN_FONT_SIZE_PX = 18;
 /** Alpha of the area label text. */
 export const AREA_LABEL_ALPHA = 1.0;
 /** Fallback label color when an area has no color set (shouldn't happen in practice). */
@@ -205,6 +207,8 @@ export const AUTO_ON_SIDE_DEPTH = 2;
 export const CHARACTER_HIT_HALF_WIDTH = 8;
 export const CHARACTER_HIT_HEIGHT = 24;
 export const TOOL_OVERLAY_VERTICAL_OFFSET = 32;
+/** Shared scale for upstream character names, activity labels, and folders. */
+export const TOOL_OVERLAY_TEXT_SCALE = 1.5;
 
 // ── Greeter + Intro bubble ──────────────────────────────────
 /** Reserved character id for the Intro's greeter. Far outside both real agent

@@ -5,6 +5,7 @@ import {
   type CabinetBox,
   cabinetBoxes,
   confettiParticles,
+  HOME_AI_TEXT_SCALE,
   ledColor,
   phaseTint,
   statsLines,
@@ -77,7 +78,7 @@ export function renderHomeAiLayer(a: HomeAiRenderArgs): CabinetBox[] {
       py(b.minRow * TILE_SIZE + 2),
       name,
       zoom,
-      (b.maxCol - b.minCol + 1) * TILE_SIZE * zoom - 6 * zoom,
+      (b.maxCol - b.minCol + 1) * TILE_SIZE * zoom - 6 * HOME_AI_TEXT_SCALE * zoom,
     );
   }
   for (const label of ['Break Room', 'Mailroom', 'Server Room']) {
@@ -93,7 +94,7 @@ export function renderHomeAiLayer(a: HomeAiRenderArgs): CabinetBox[] {
       py(b.minRow * TILE_SIZE + 2),
       label,
       zoom,
-      (b.maxCol - b.minCol + 1) * TILE_SIZE * zoom - 6 * zoom,
+      (b.maxCol - b.minCol + 1) * TILE_SIZE * zoom - 6 * HOME_AI_TEXT_SCALE * zoom,
     );
   }
   // Server room cabinets
@@ -127,21 +128,20 @@ export function renderHomeAiLayer(a: HomeAiRenderArgs): CabinetBox[] {
         py(server.maxRow * TILE_SIZE - 4),
         'NO SIGNAL',
         zoom,
-        (server.maxCol - server.minCol + 1) * TILE_SIZE * zoom - 6 * zoom,
+        (server.maxCol - server.minCol + 1) * TILE_SIZE * zoom - 6 * HOME_AI_TEXT_SCALE * zoom,
         0.6,
       );
   }
 
-  // Whiteboard stats
+  // Keep the enlarged stats panel inside the break room and above its table.
   const board = layout.furniture.find((f) => f.type === 'WHITEBOARD');
-  if (board)
-    drawBoard(
-      ctx,
-      px(board.col * TILE_SIZE),
-      py(board.row * TILE_SIZE + 4),
-      statsLines(state.stats),
-      zoom,
-    );
+  const boardRoom = areaBounds(layout, 'Break Room');
+  if (board) {
+    const boardY = boardRoom
+      ? Math.max(board.row * TILE_SIZE + 4, boardRoom.minRow * TILE_SIZE)
+      : board.row * TILE_SIZE + 4;
+    drawBoard(ctx, px(board.col * TILE_SIZE), py(boardY), statsLines(state.stats), zoom);
+  }
 
   // Mailroom clock fire
   const clock = layout.furniture.find((f) => f.type === 'CLOCK');
@@ -238,15 +238,15 @@ function drawSign(
   maxTextWidth: number,
   alpha = 0.85,
 ): void {
-  ctx.font = FONT(6 * zoom);
+  ctx.font = FONT(6 * HOME_AI_TEXT_SCALE * zoom);
   const label = fitText(ctx, text, maxTextWidth);
-  const w = ctx.measureText(label).width + 6 * zoom;
+  const w = ctx.measureText(label).width + 6 * HOME_AI_TEXT_SCALE * zoom;
   ctx.fillStyle = `rgba(${OVERLAY_PALETTE.signBackground},${alpha})`;
-  ctx.fillRect(cx - w / 2, y, w, 9 * zoom);
+  ctx.fillRect(cx - w / 2, y, w, 9 * HOME_AI_TEXT_SCALE * zoom);
   ctx.fillStyle = OVERLAY_PALETTE.signText;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
-  ctx.fillText(label, cx, y + 1.5 * zoom);
+  ctx.fillText(label, cx, y + 1.5 * HOME_AI_TEXT_SCALE * zoom);
   ctx.textAlign = 'start';
   ctx.textBaseline = 'alphabetic';
 }
@@ -267,18 +267,29 @@ function drawBoard(
   lines: string[],
   zoom: number,
 ): void {
-  const w = 72 * zoom;
-  const h = (lines.length * 6 + 4) * zoom;
+  const w = 72 * HOME_AI_TEXT_SCALE * zoom;
+  const lineHeight = 5.5 * HOME_AI_TEXT_SCALE * zoom;
+  const topInset = 2 * HOME_AI_TEXT_SCALE * zoom;
+  const textHeight = 5 * HOME_AI_TEXT_SCALE * zoom;
+  const bottomInset = 1.5 * HOME_AI_TEXT_SCALE * zoom;
+  const h =
+    lines.length === 0
+      ? topInset + bottomInset
+      : topInset + (lines.length - 1) * lineHeight + textHeight + bottomInset;
   ctx.fillStyle = OVERLAY_PALETTE.board;
   ctx.fillRect(x, y, w, h);
   ctx.strokeStyle = OVERLAY_PALETTE.wood;
   ctx.lineWidth = zoom;
   ctx.strokeRect(x, y, w, h);
   ctx.fillStyle = OVERLAY_PALETTE.ink;
-  ctx.font = FONT(5 * zoom);
+  ctx.font = FONT(textHeight);
   ctx.textBaseline = 'top';
   lines.forEach((line, i) =>
-    ctx.fillText(fitText(ctx, line, 68 * zoom), x + 2 * zoom, y + (2 + i * 6) * zoom),
+    ctx.fillText(
+      fitText(ctx, line, 68 * HOME_AI_TEXT_SCALE * zoom),
+      x + 2 * HOME_AI_TEXT_SCALE * zoom,
+      y + topInset + i * lineHeight,
+    ),
   );
   ctx.textBaseline = 'alphabetic';
 }
@@ -321,13 +332,15 @@ function drawCabinet(
     }
   }
   ctx.fillStyle = OVERLAY_PALETTE.label;
-  ctx.font = FONT(4 * zoom);
+  ctx.font = FONT(4 * HOME_AI_TEXT_SCALE * zoom);
   ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
   ctx.fillText(
-    fitText(ctx, (group?.name ?? '').split(' ')[0].slice(0, 6), box.w * zoom),
+    fitText(ctx, (group?.name ?? '').split(' ')[0].slice(0, 6), box.labelWidth * zoom),
     px(box.x + box.w / 2),
-    py(box.y + box.h + 6),
+    py(box.y + box.h + 1),
   );
   ctx.textAlign = 'start';
+  ctx.textBaseline = 'alphabetic';
 }
 /* eslint-enable pixel-agents/no-inline-colors */
