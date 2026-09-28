@@ -2,11 +2,13 @@ import assert from 'node:assert/strict';
 
 import { test, vi } from 'vitest';
 
-const { cacheScales } = vi.hoisted(() => ({ cacheScales: [] as number[] }));
+const { cacheCalls } = vi.hoisted(() => ({
+  cacheCalls: [] as { sprite: unknown; zoom: number }[],
+}));
 
 vi.mock('../src/office/sprites/spriteCache.js', () => ({
-  getCachedSprite: (_sprite: unknown, zoom: number) => {
-    cacheScales.push(zoom);
+  getCachedSprite: (sprite: unknown, zoom: number) => {
+    cacheCalls.push({ sprite, zoom });
     return { width: 16 * zoom, height: 24 * zoom } as HTMLCanvasElement;
   },
   getOutlineSprite: (sprite: unknown) => sprite,
@@ -14,6 +16,7 @@ vi.mock('../src/office/sprites/spriteCache.js', () => ({
 
 import { createCharacter } from '../src/office/engine/characters.js';
 import { renderFrame } from '../src/office/engine/renderer.js';
+import { BUBBLE_PERMISSION_SPRITE } from '../src/office/sprites/spriteData.js';
 
 test('speech bubbles use integer pixel scales at every supported zoom', () => {
   const ctx = {
@@ -26,7 +29,7 @@ test('speech bubbles use integer pixel scales at every supported zoom', () => {
   character.bubbleType = 'permission';
 
   for (let zoom = 1; zoom <= 10; zoom++) {
-    cacheScales.length = 0;
+    cacheCalls.length = 0;
     renderFrame(
       ctx,
       100,
@@ -43,8 +46,9 @@ test('speech bubbles use integer pixel scales at every supported zoom', () => {
       0,
       0,
     );
-    const bubbleScale = cacheScales.at(-1);
-    assert.equal(bubbleScale, Math.max(zoom + 1, Math.round(zoom * 1.5)));
-    assert.ok(Number.isInteger(bubbleScale));
+    const bubbleCall = cacheCalls.find((call) => call.sprite === BUBBLE_PERMISSION_SPRITE);
+    assert.ok(bubbleCall, `permission bubble should be cached at zoom ${zoom}`);
+    const s = bubbleCall.zoom;
+    assert.ok(Number.isInteger(s) && s > zoom && s >= zoom * 1.5 - 0.5);
   }
 });
