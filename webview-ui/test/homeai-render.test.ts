@@ -52,7 +52,8 @@ test('Home-AI signs, whiteboard, and cabinet labels stay legible and fit at prop
   const renderAtZoom = (zoom: number, reachable = true) => {
     state.sol.reachable = reachable;
     const drawn: DrawnText[] = [];
-    const rectangles: { x: number; y: number; width: number; height: number }[] = [];
+    const rectangles: { x: number; y: number; width: number; height: number; fillStyle: string }[] =
+      [];
     const ctx = {
       font: '',
       fillStyle: '',
@@ -63,8 +64,8 @@ test('Home-AI signs, whiteboard, and cabinet labels stay legible and fit at prop
       textBaseline: 'alphabetic' as CanvasTextBaseline,
       save() {},
       restore() {},
-      fillRect(x: number, y: number, width: number, height: number) {
-        rectangles.push({ x, y, width, height });
+      fillRect(this: { fillStyle: string }, x: number, y: number, width: number, height: number) {
+        rectangles.push({ x, y, width, height, fillStyle: this.fillStyle });
       },
       strokeRect() {},
       measureText(this: { font: string }, text: string) {
@@ -100,7 +101,11 @@ test('Home-AI signs, whiteboard, and cabinet labels stay legible and fit at prop
     return entry.fontPx;
   };
 
-  assert.ok(low.drawn.some((entry) => entry.text.endsWith('…')));
+  const roomNameplate = low.drawn.find(
+    (entry) => entry.text.startsWith('An exceptionally') && entry.text.endsWith('…'),
+  );
+  assert.ok(roomNameplate);
+  assert.ok(roomNameplate.width <= (10 * 16 - 6 * 1.75) * 0.5);
   assert.equal(fontSize(high.drawn, 'Break Room'), 11);
   assert.equal(fontSize(high.drawn, 'TODAY'), 9);
   assert.equal(fontSize(high.drawn, 'Extrem'), 7);
@@ -133,6 +138,21 @@ test('Home-AI signs, whiteboard, and cabinet labels stay legible and fit at prop
   assert.ok(cabinetLabel);
   assert.ok(cabinetLabel.width <= cabinetBox.labelWidth * 0.5);
   assert.ok(cabinetBox.labelWidth > cabinetBox.w);
+  const cabinetLabelCenter = (cabinetBox.x + cabinetBox.w / 2) * 0.5;
+  const cabinetLabelTop = (cabinetBox.y + cabinetBox.h + 1) * 0.5;
+  const roomSignBackground = low.rectangles.find((rect) => rect.y === 17);
+  assert.ok(roomSignBackground);
+  assert.ok(
+    low.rectangles.some(
+      (rect) =>
+        rect.fillStyle === roomSignBackground.fillStyle &&
+        rect.y === cabinetLabelTop &&
+        rect.x < cabinetLabelCenter &&
+        rect.x + rect.width > cabinetLabelCenter &&
+        rect.width <= cabinetBox.labelWidth * 0.5,
+    ),
+    'a fitted dark backing matching the room nameplate sits behind each cabinet label',
+  );
   const offline = renderAtZoom(1, false);
   assert.equal(fontSize(offline.drawn, 'NO SIGNAL'), 11);
   const noSignal = offline.rectangles.find((rect) => rect.y === 156 && rect.width < 90);

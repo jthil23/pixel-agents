@@ -789,7 +789,10 @@ function renderBubbles(
       alpha = ch.bubbleTimer / BUBBLE_FADE_DURATION_SEC;
     }
 
-    const cached = getCachedSprite(sprite, zoom * BUBBLE_SCALE_FACTOR);
+    const cached = getCachedSprite(
+      sprite,
+      Math.max(zoom + 1, Math.round(zoom * BUBBLE_SCALE_FACTOR)),
+    );
     // Position: centered above the character's head
     // Character is anchored bottom-center at (ch.x, ch.y), sprite is 16x24
     // Place bubble above head with a small gap; follow sitting offset

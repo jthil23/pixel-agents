@@ -8,6 +8,7 @@ import {
   cabinetBoxes,
   confettiParticles,
   hitCabinet,
+  HOME_AI_TEXT_SCALE,
   ledColor,
   phaseTint,
   statsLines,
@@ -59,7 +60,7 @@ test('cabinet label cells fit six-character names and remain inside the server r
     assert.ok(box.labelWidth >= 42);
     assert.ok(labelLeft >= roomLeft);
     assert.ok(labelLeft + box.labelWidth <= roomRight);
-    assert.ok(box.y + box.h + 1 + 9 <= roomBottom - 20);
+    assert.ok(box.y + box.h + 1 + Math.ceil(9 * HOME_AI_TEXT_SCALE) <= roomBottom - 20);
   }
   assert.equal(hitCabinet(boxes, boxes[1].x + 1, boxes[1].y + 1), 'Media');
   assert.equal(hitCabinet(boxes, boxes[0].x - 1, boxes[0].y), null);
@@ -79,18 +80,31 @@ test('one to eight cabinets and their labels stay inside without overlap', () =>
       const labelLeft = box.x + (box.w - box.labelWidth) / 2;
       assert.ok(box.x >= roomLeft);
       assert.ok(box.y >= roomTop);
+      assert.ok(
+        box.y >= roomTop + 2 + Math.ceil(9 * HOME_AI_TEXT_SCALE) + 2,
+        'cabinet begins below the server-room nameplate band',
+      );
       assert.ok(box.x + box.w <= roomRight);
       assert.ok(box.y + box.h <= roomBottom);
       assert.ok(box.labelWidth >= 42);
       assert.ok(labelLeft >= roomLeft);
       assert.ok(labelLeft + box.labelWidth <= roomRight);
-      assert.ok(box.y + box.h + 1 + 9 <= roomBottom - 20);
+      assert.ok(
+        box.y + box.h + 1 + Math.ceil(9 * HOME_AI_TEXT_SCALE) <= roomBottom - 20,
+        'cabinet label remains inside the room',
+      );
     }
     for (let i = 0; i < boxes.length; i++) {
       for (let j = i + 1; j < boxes.length; j++) {
         const a = boxes[i];
         const b = boxes[j];
         assert.ok(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y);
+        if (a.y < b.y) {
+          assert.ok(
+            a.y + a.h + 1 + Math.ceil(9 * HOME_AI_TEXT_SCALE) <= b.y,
+            'cabinet label band clears cabinets in the next row',
+          );
+        }
         if (a.y === b.y) {
           const aLabelLeft = a.x + (a.w - a.labelWidth) / 2;
           const bLabelLeft = b.x + (b.w - b.labelWidth) / 2;

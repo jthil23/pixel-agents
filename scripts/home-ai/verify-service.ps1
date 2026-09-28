@@ -9,6 +9,7 @@ $ErrorActionPreference = 'Stop'
 $script:Checks = New-Object 'System.Collections.Generic.List[object]'
 $script:PortToCheck = 3100
 $logMarkers = [pscustomobject]@{ HaToken = $false; Running = $false }
+$portReady = $false
 function Get-LogLength {
   if (-not (Test-Path -LiteralPath $LogPath -PathType Leaf)) { return 0L }
   return [long](Get-Item -LiteralPath $LogPath).Length

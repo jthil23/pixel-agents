@@ -26,7 +26,7 @@ export const HOME_AI_TEXT_SCALE = 1.75;
 export const CABINET_W = 20;
 export const CABINET_H = 44;
 const CABINET_LABEL_MIN_WIDTH = 6 * 4 * HOME_AI_TEXT_SCALE;
-const CABINET_LABEL_HEIGHT = 9;
+const CABINET_LABEL_HEIGHT = Math.ceil(9 * HOME_AI_TEXT_SCALE);
 const CABINET_LABEL_GAP = 1;
 const CABINET_LABEL_COLUMN_GAP = 2;
 const CABINET_LABEL_BOTTOM_RESERVED = 20;
@@ -72,7 +72,7 @@ export function cabinetBoxes(bounds: Bounds, groups: SolGroup[]): CabinetBox[] {
   const roomRight = (bounds.maxCol + 1) * TILE_SIZE;
   const roomBottom = (bounds.maxRow + 1) * TILE_SIZE;
   const left = roomLeft + 8;
-  const top = roomTop + 14;
+  const top = roomTop + 2 + Math.ceil(9 * HOME_AI_TEXT_SCALE) + 2;
   const availableWidth = roomRight - left - 8;
   const availableHeight = roomBottom - top - CABINET_LABEL_BOTTOM_RESERVED;
   const columns = Math.min(

@@ -331,15 +331,18 @@ function drawCabinet(
       ctx.fillRect(px(box.x + 6 + k * 3), py(box.y - 4 - t), 3 * zoom, 3 * zoom);
     }
   }
-  ctx.fillStyle = OVERLAY_PALETTE.label;
+  const labelMaxWidth = (box.labelWidth - 4) * zoom;
   ctx.font = FONT(4 * HOME_AI_TEXT_SCALE * zoom);
+  const label = fitText(ctx, (group?.name ?? '').split(' ')[0].slice(0, 6), labelMaxWidth);
+  const labelCenterX = px(box.x + box.w / 2);
+  const labelY = py(box.y + box.h + 1);
+  const labelWidth = ctx.measureText(label).width + 4 * zoom;
+  ctx.fillStyle = `rgba(${OVERLAY_PALETTE.signBackground},0.85)`;
+  ctx.fillRect(labelCenterX - labelWidth / 2, labelY, labelWidth, 9 * HOME_AI_TEXT_SCALE * zoom);
+  ctx.fillStyle = OVERLAY_PALETTE.label;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
-  ctx.fillText(
-    fitText(ctx, (group?.name ?? '').split(' ')[0].slice(0, 6), box.labelWidth * zoom),
-    px(box.x + box.w / 2),
-    py(box.y + box.h + 1),
-  );
+  ctx.fillText(label, labelCenterX, labelY);
   ctx.textAlign = 'start';
   ctx.textBaseline = 'alphabetic';
 }
