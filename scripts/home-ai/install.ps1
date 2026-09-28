@@ -46,10 +46,12 @@ if ($installLayout) {
 
 # Scheduled task: node.exe is the task's own process (supervised), hidden via S4U, one instance only.
 $action = New-ScheduledTaskAction -Execute $node -Argument "dist\cli.js --home-ai --log `"$log`"" -WorkingDirectory $root
-$trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+$logonTrigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+# An empty repetition duration means indefinite recurrence; StartWhenAvailable catches a repetition missed during reboot, including while logged off under S4U.
+$watchdogTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 1)
 $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType S4U -RunLevel Limited
-$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
-Register-ScheduledTask -TaskName 'Pixel Office' -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Description 'Pixel Office (home-ai) LAN dashboard' -Force | Out-Null
+$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
+Register-ScheduledTask -TaskName 'Pixel Office' -Action $action -Trigger @($logonTrigger, $watchdogTrigger) -Principal $principal -Settings $settings -Description 'Pixel Office (home-ai) LAN dashboard' -Force | Out-Null
 
 # Firewall: LAN (Private profile) only; keep it aligned with listen.port.
 $firewallRule = Get-NetFirewallRule -DisplayName 'Pixel Office (Private)' -ErrorAction SilentlyContinue | Select-Object -First 1
