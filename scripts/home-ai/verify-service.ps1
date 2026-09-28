@@ -8,7 +8,77 @@ param(
 $ErrorActionPreference = 'Stop'
 $script:Checks = New-Object 'System.Collections.Generic.List[object]'
 $script:PortToCheck = 3100
-$portReady = $false
+$logMarkers = [pscustomobject]@{ HaToken = $false; Running = $false }
+function Get-LogLength {
+  if (-not (Test-Path -LiteralPath $LogPath -PathType Leaf)) { return 0L }
+  return [long](Get-Item -LiteralPath $LogPath).Length
+}
+
+function Test-LogContainsAfter {
+  param(
+    [string]$Text,
+    [long]$Offset
+  )
+
+  if (-not (Test-Path -LiteralPath $LogPath -PathType Leaf)) { return $false }
+  $stream = $null
+  $reader = $null
+  try {
+    $stream = [System.IO.File]::Open($LogPath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+    if ($stream.Length -le $Offset) { return $false }
+    $null = $stream.Seek($Offset, [System.IO.SeekOrigin]::Begin)
+    $reader = [System.IO.StreamReader]::new($stream, [System.Text.Encoding]::UTF8, $true)
+    $stream = $null
+    $content = $reader.ReadToEnd()
+    return $content.IndexOf($Text, [StringComparison]::OrdinalIgnoreCase) -ge 0
+  } catch {
+    return $false
+  } finally {
+    if ($null -ne $reader) { $reader.Dispose() }
+    if ($null -ne $stream) { $stream.Dispose() }
+  }
+}
+
+function Wait-ForLogMarkers {
+  param(
+    [long]$Offset,
+    [int]$TimeoutSeconds = 15
+  )
+
+  $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+  do {
+    $haToken = Test-LogContainsAfter -Text 'HA token' -Offset $Offset
+    $running = Test-LogContainsAfter -Text 'Pixel Office running' -Offset $Offset
+    if ($haToken -and $running) {
+      return [pscustomobject]@{ HaToken = $true; Running = $true }
+    }
+    if ([DateTime]::UtcNow -ge $deadline) { break }
+    Start-Sleep -Seconds 1
+  } while ($true)
+  return [pscustomobject]@{ HaToken = $haToken; Running = $running }
+}
+
+function Get-FailureDetails {
+  param(
+    [string]$ErrorMessage,
+    [string]$Fallback
+  )
+  if ($ErrorMessage) { return $ErrorMessage }
+  return $Fallback
+}
+
+function Test-TaskWatchdog {
+  param([string]$TaskName)
+
+  $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction Stop
+  $watchdogs = @($task.Triggers | Where-Object {
+    $_.CimClass.CimClassName -eq 'MSFT_TaskTimeTrigger' -and
+    $_.Repetition.Interval -eq 'PT1M' -and
+    [string]::IsNullOrEmpty([string]$_.Repetition.Duration)
+  })
+  return $watchdogs.Count -gt 0 -and [bool]$task.Settings.StartWhenAvailable
+}
+
 
 function Add-Check {
   param(
@@ -101,16 +171,6 @@ function Wait-ForNoListener {
   return $false
 }
 
-function Test-LogContains {
-  param([string]$Text)
-
-  if (-not (Test-Path -LiteralPath $LogPath -PathType Leaf)) { return $false }
-  try {
-    return [bool](Select-String -LiteralPath $LogPath -SimpleMatch -Pattern $Text -Quiet -ErrorAction Stop)
-  } catch {
-    return $false
-  }
-}
 
 try {
   try {
@@ -121,8 +181,17 @@ try {
     Add-Check -Name 'Configured port' -Passed $false -Details 'Could not read a valid listen.port value.'
   }
 
+  $watchdogReady = $false
+  $watchdogError = ''
+  try {
+    $watchdogReady = Test-TaskWatchdog -TaskName $TaskName
+  } catch { $watchdogError = $_.Exception.Message }
+  $watchdogDetails = if ($watchdogReady) { '' } elseif ($watchdogError) { "Re-run install.ps1 elevated. $watchdogError" } else { 'Re-run install.ps1 elevated to add the indefinite one-minute trigger and StartWhenAvailable.' }
+  Add-Check -Name 'Task has an indefinite one-minute watchdog and StartWhenAvailable' -Passed $watchdogReady -Details $watchdogDetails
+
   if ($portReady) {
     $initial = $null
+    $initialError = ''
     try {
       $initial = Get-PortSnapshot
       if ($initial.ListenerPids.Count -eq 0) {
@@ -130,51 +199,81 @@ try {
         $initial = Wait-ForHomeAiListener -TimeoutSeconds 30 -PollSeconds 1
       }
     } catch {
+      $initialError = $_.Exception.Message
       $initial = $null
     }
 
     $oneListener = $null -ne $initial -and $initial.ListenerPids.Count -eq 1
     $homeAiOwner = $oneListener -and $null -ne $initial.HomeAiPid
-    Add-Check -Name ("Exactly one listener on TCP {0}" -f $script:PortToCheck) -Passed $oneListener
-    Add-Check -Name 'Listener process command line contains --home-ai' -Passed $homeAiOwner
+    $listenerDetails = if ($oneListener) { '' } else { Get-FailureDetails -ErrorMessage $initialError -Fallback 'Expected exactly one listener.' }
+    $ownerDetails = if ($homeAiOwner) { '' } else { Get-FailureDetails -ErrorMessage $initialError -Fallback 'Listener command line did not contain --home-ai.' }
+    Add-Check -Name ("Exactly one listener on TCP {0}" -f $script:PortToCheck) -Passed $oneListener -Details $listenerDetails
+    Add-Check -Name 'Listener process command line contains --home-ai' -Passed $homeAiOwner -Details $ownerDetails
 
     if ($homeAiOwner) {
       $initialPid = [int]$initial.HomeAiPid
 
       $duplicateStartOk = $false
+      $duplicateError = ''
       try {
         Start-ScheduledTask -TaskName $TaskName -ErrorAction Stop
-        $duplicate = Wait-ForHomeAiListener -TimeoutSeconds 15 -PollSeconds 1 -ExpectedPid $initialPid
-        $duplicateStartOk = $null -ne $duplicate
-      } catch { }
-      Add-Check -Name 'Duplicate start keeps one listener and the same PID' -Passed $duplicateStartOk
+        Start-Sleep -Seconds 5
+        $duplicate = Get-PortSnapshot
+        $homeAiProcesses = @(Get-CimInstance -ClassName Win32_Process -ErrorAction Stop | Where-Object {
+          $null -ne $_.CommandLine -and
+            $_.CommandLine.IndexOf('--home-ai', [StringComparison]::OrdinalIgnoreCase) -ge 0 -and
+            $_.CommandLine.IndexOf($LogPath, [StringComparison]::OrdinalIgnoreCase) -ge 0
+        })
+        $duplicateStartOk = $duplicate.ListenerPids.Count -eq 1 -and
+          $duplicate.HomeAiPid -eq $initialPid -and
+          $homeAiProcesses.Count -eq 1 -and
+          [int]$homeAiProcesses[0].ProcessId -eq $initialPid
+      } catch { $duplicateError = $_.Exception.Message }
+      $duplicateDetails = if ($duplicateStartOk) { '' } else { Get-FailureDetails -ErrorMessage $duplicateError -Fallback 'Expected one listener and exactly one --home-ai process using this log path, with the original PID after 5 seconds.' }
+      Add-Check -Name 'Duplicate start keeps one listener and the same PID after 5 seconds' -Passed $duplicateStartOk -Details $duplicateDetails
 
       $stopped = $false
+      $stopError = ''
       try {
+        $nextRunTime = (Get-ScheduledTaskInfo -TaskName $TaskName -ErrorAction Stop).NextRunTime
+        $now = Get-Date
+        if ($nextRunTime -is [DateTime] -and $nextRunTime -le $now.AddSeconds(20)) {
+          $waitSeconds = [int][Math]::Ceiling(($nextRunTime.AddSeconds(2) - (Get-Date)).TotalSeconds)
+          if ($waitSeconds -gt 0) { Start-Sleep -Seconds $waitSeconds }
+        }
         Stop-ScheduledTask -TaskName $TaskName -ErrorAction Stop
         $stopped = Wait-ForNoListener -TimeoutSeconds 15 -PollSeconds 1
-      } catch { }
-      Add-Check -Name 'Stop leaves zero listeners' -Passed $stopped
+      } catch { $stopError = $_.Exception.Message }
+      $stopDetails = if ($stopped) { '' } else { Get-FailureDetails -ErrorMessage $stopError -Fallback 'Timed out waiting for all listeners to stop.' }
+      Add-Check -Name 'Stop leaves zero listeners' -Passed $stopped -Details $stopDetails
 
       $started = $null
+      $startError = ''
       try {
         Start-ScheduledTask -TaskName $TaskName -ErrorAction Stop
         $started = Wait-ForHomeAiListener -TimeoutSeconds 30 -PollSeconds 1 -DifferentFromPid $initialPid
-      } catch { }
+      } catch { $startError = $_.Exception.Message }
       $newPid = $null -ne $started
-      Add-Check -Name 'Start restores one listener with a new PID' -Passed $newPid
+      $startDetails = if ($newPid) { '' } else { Get-FailureDetails -ErrorMessage $startError -Fallback 'Timed out waiting for one listener with a new PID.' }
+      Add-Check -Name 'Start restores one listener with a new PID' -Passed $newPid -Details $startDetails
 
       $recovered = $null
+      $killError = ''
       if ($newPid) {
         $killedPid = [int]$started.HomeAiPid
         try {
+          $logOffset = Get-LogLength
           Stop-Process -Id $killedPid -Force -ErrorAction Stop
           $recovered = Wait-ForHomeAiListener -TimeoutSeconds 90 -PollSeconds 5 -DifferentFromPid $killedPid
-        } catch { }
+          if ($null -ne $recovered) {
+            $logMarkers = Wait-ForLogMarkers -Offset $logOffset -TimeoutSeconds 15
+          }
+        } catch { $killError = $_.Exception.Message }
       }
-      Add-Check -Name 'Killed service recovers within 90 seconds (5-second polling)' -Passed ($null -ne $recovered)
+      $recoveryDetails = if ($null -ne $recovered) { '' } else { Get-FailureDetails -ErrorMessage $killError -Fallback 'Timed out waiting for the killed process to recover.' }
+      Add-Check -Name 'Killed service recovers within 90 seconds (5-second polling)' -Passed ($null -ne $recovered) -Details $recoveryDetails
     } else {
-      Add-Check -Name 'Duplicate start keeps one listener and the same PID' -Passed $false -Details 'Not run: no single --home-ai listener was verified.'
+      Add-Check -Name 'Duplicate start keeps one listener and the same PID after 5 seconds' -Passed $false -Details 'Not run: no single --home-ai listener was verified.'
       Add-Check -Name 'Stop leaves zero listeners' -Passed $false -Details 'Not run: no single --home-ai listener was verified.'
       Add-Check -Name 'Start restores one listener with a new PID' -Passed $false -Details 'Not run: no single --home-ai listener was verified.'
       Add-Check -Name 'Killed service recovers within 90 seconds (5-second polling)' -Passed $false -Details 'Not run: no single --home-ai listener was verified.'
@@ -182,7 +281,7 @@ try {
   } else {
     Add-Check -Name 'Exactly one listener on configured port' -Passed $false -Details 'Not run: port configuration is unavailable.'
     Add-Check -Name 'Listener process command line contains --home-ai' -Passed $false -Details 'Not run: port configuration is unavailable.'
-    Add-Check -Name 'Duplicate start keeps one listener and the same PID' -Passed $false -Details 'Not run: port configuration is unavailable.'
+    Add-Check -Name 'Duplicate start keeps one listener and the same PID after 5 seconds' -Passed $false -Details 'Not run: port configuration is unavailable.'
     Add-Check -Name 'Stop leaves zero listeners' -Passed $false -Details 'Not run: port configuration is unavailable.'
     Add-Check -Name 'Start restores one listener with a new PID' -Passed $false -Details 'Not run: port configuration is unavailable.'
     Add-Check -Name 'Killed service recovers within 90 seconds (5-second polling)' -Passed $false -Details 'Not run: port configuration is unavailable.'
@@ -191,6 +290,7 @@ try {
   Add-Check -Name 'Verification sequence completed' -Passed $false -Details 'Unexpected error stopped the service checks.'
 } finally {
   $serviceRunning = $false
+  $serviceError = ''
   if ($portReady) {
     try {
       $state = Get-PortSnapshot
@@ -202,14 +302,15 @@ try {
         }
       }
       $serviceRunning = $null -ne $state -and $state.ListenerPids.Count -eq 1 -and $null -ne $state.HomeAiPid
-    } catch { }
+    } catch { $serviceError = $_.Exception.Message }
   }
-  Add-Check -Name 'Service is running at end' -Passed $serviceRunning
+  $serviceDetails = if ($serviceRunning) { '' } else { Get-FailureDetails -ErrorMessage $serviceError -Fallback 'No single --home-ai listener was available at the end.' }
+  Add-Check -Name 'Service is running at end' -Passed $serviceRunning -Details $serviceDetails
+  $haTokenDetails = if ($logMarkers.HaToken) { '' } else { 'Marker not found in log data appended after the kill.' }
+  $runningDetails = if ($logMarkers.Running) { '' } else { 'Marker not found in log data appended after the kill.' }
+  Add-Check -Name "Log contains 'HA token' after process recovery" -Passed $logMarkers.HaToken -Details $haTokenDetails
+  Add-Check -Name "Log contains 'Pixel Office running' after process recovery" -Passed $logMarkers.Running -Details $runningDetails
 }
-
-Add-Check -Name "Log contains 'HA token'" -Passed (Test-LogContains -Text 'HA token')
-Add-Check -Name "Log contains 'Pixel Office running'" -Passed (Test-LogContains -Text 'Pixel Office running')
-
 $passedCount = @($script:Checks | Where-Object { $_.Passed }).Count
 $failedCount = $script:Checks.Count - $passedCount
 Write-Host ("Summary: {0} passed, {1} failed." -f $passedCount, $failedCount)
